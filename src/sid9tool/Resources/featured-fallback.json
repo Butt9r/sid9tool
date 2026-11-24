@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "updatedAt": "2026-11-24T22:20:00Z",
+  "apps": [
+    {
+      "id": "builtin-livecontainer",
+      "name": "LiveContainer",
+      "bundleId": "dev.livecontainer.app",
+      "iconUrl": "",
+      "ipaUrl": "https://example.invalid/LiveContainer.ipa",
+      "description": "Run iOS apps without actually installing them — containers, multi-version data, JIT-less signing.",
+      "tags": ["container", "launcher"],
+      "addedAt": "2026-11-24T22:20:00Z"
+    },
+    {
+      "id": "builtin-sideinstaller",
+      "name": "SideInstaller",
+      "bundleId": "dev.frizzle.sideinstaller",
+      "iconUrl": "",
+      "ipaUrl": "https://example.invalid/SideInstaller.ipa",
+      "description": "PC-free sideloading: pair once, sign and install fully on-device.",
+      "tags": ["sideloading", "pc-free"],
+      "addedAt": "2026-11-24T22:20:00Z"
+    }
+  ]
+}

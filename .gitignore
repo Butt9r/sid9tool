@@ -1,0 +1,33 @@
+# Local agent/engineering notes (NEVER commit)
+AGENTS.md
+TODO.md
+.cline/
+
+# macOS
+.DS_Store
+
+# Xcode build artifacts
+DerivedData/
+build/
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.ipa
+*.dSYM
+*.dSYM.zip
+
+# XcodeGen
+project.xcworkspace/
+*.xcodeproj
+
+# Swift Package Manager
+.swiftpm/
+.build/
+Packages/
+
+# Misc
+*.log
+.env
+
+# Local helper tools (never commit)
+tools/

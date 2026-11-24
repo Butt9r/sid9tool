@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "updatedAt": "2026-11-24T22:15:00Z",
+  "apps": [
+    {
+      "id": "sample-notes",
+      "name": "Notes Demo",
+      "bundleId": "com.butt9r.sid9tool.sample.notes",
+      "iconUrl": "",
+      "ipaUrl": "https://raw.githubusercontent.com/Butt9r/sid9tool/main/ipas/notes-demo.ipa",
+      "description": "A minimal sample app used to verify the sid9tool container launch and slot quota flow end-to-end.",
+      "tags": ["sample", "demo"],
+      "addedAt": "2026-11-24T22:15:00Z"
+    },
+    {
+      "id": "sample-calc",
+      "name": "Calc Demo",
+      "bundleId": "com.butt9r.sid9tool.sample.calc",
+      "iconUrl": "",
+      "ipaUrl": "https://raw.githubusercontent.com/Butt9r/sid9tool/main/ipas/calc-demo.ipa",
+      "description": "A lightweight calculator sample for testing JIT-less launch paths and storage cleanup inside the container.",
+      "tags": ["sample", "demo"],
+      "addedAt": "2026-11-24T22:15:00Z"
+    }
+  ]
+}
