@@ -19,7 +19,7 @@ struct FeaturedView: View {
                 }
                 .padding()
             }
-            .background(.background.secondary)
+            .background(Color(.systemGroupedBackground))
             .navigationTitle(localization.t("精選", "Featured", "精选"))
             .refreshable {
                 await feedService.refresh(feedURL: appState.feedURL)

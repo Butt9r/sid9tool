@@ -17,7 +17,7 @@ struct SettingsView: View {
                 languageSection
                 aboutSection
             }
-            .background(.background.secondary)
+            .background(Color(.systemGroupedBackground))
             .navigationTitle(localization.t("設定", "Settings", "设置"))
         }
     }
@@ -127,8 +127,8 @@ struct SettingsView: View {
 
     private var aboutSection: some View {
         Section {
-            LabeledContent("Version", value: Bundle.main.shortVersion ?? "1.0.0")
-            LabeledContent("Build", value: Bundle.main.buildNumber ?? "-")
+            LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")
+            LabeledContent("Build", value: Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "-")
             Link(destination: URL(string: "https://github.com/Butt9r/sid9tool")!) {
                 Label("GitHub — Butt9r/sid9tool", systemImage: "chevron.left.forwardslash.chevron.right")
             }

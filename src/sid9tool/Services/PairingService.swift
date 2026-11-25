@@ -42,6 +42,6 @@ final class PairingService {
     /// Remove all stored pairing data.
     @MainActor
     func reset() {
-        try? FileManager.default.removeItem(at: StorageService.support.appendingPathComponent("pairing"))
+        try? FileManager.default.removeItem(at: StorageService.documents.appendingPathComponent("pairing"))
     }
 }

@@ -30,17 +30,27 @@ final class CertificateService {
         return profile
     }
 
-    /// Parse a .mobileprovision (DER or XML plist) into basic fields.
+    /// Parse a .mobileprovision (DER-wrapped or plain XML plist) into basic fields.
     private func parseProvision(_ url: URL) -> (Data, [String: Any])? {
         guard let data = try? Data(contentsOf: url) else { return nil }
-        // Try plist directly first.
+        // Try plist directly first (plain XML provisioning file).
         if let dict = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] {
             return (data, dict)
         }
-        // DER provisioning profile: use SecCMServerLoadContents (returns [dicts]).
-        guard let contents = SecCMServerLoadContents(data as CFData, nil) as? [[String: Any]] else {
-            return nil
-        }
-        return (data, contents.first ?? [:])
+        // DER-wrapped profile: carve out the embedded <plist>…</plist> XML and parse it.
+        let bytes = [UInt8](data)
+        let startMarker = [UInt8]("<plist".utf8)
+        guard let start = bytes.indices.dropLast(startMarker.count)
+            .first(where: { Array(bytes[$0..<$0 + startMarker.count]) == startMarker })
+        else { return nil }
+        let tail = Array(bytes.suffix(from: start))
+        let endMarker = [UInt8]("</plist>".utf8)
+        guard let endOffset = tail.indices.dropLast(endMarker.count)
+            .first(where: { Array(tail[$0..<$0 + endMarker.count]) == endMarker })
+        else { return nil }
+        let xml = Data(tail.prefix(through: endOffset + endMarker.count - 1))
+        guard let dict = try? PropertyListSerialization.propertyList(from: xml, options: [], format: nil) as? [String: Any]
+        else { return nil }
+        return (data, dict)
     }
 }

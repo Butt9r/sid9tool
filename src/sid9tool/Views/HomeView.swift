@@ -16,7 +16,7 @@ struct HomeView: View {
                 }
                 .padding()
             }
-            .background(.background.secondary)
+            .background(Color(.systemGroupedBackground))
             .navigationTitle(localization.t("首頁", "Home", "首页"))
         }
     }

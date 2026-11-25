@@ -71,8 +71,8 @@ final class SigningEngine: ObservableObject {
             else { throw EngineError.invalidIPA("no .app bundle inside Payload/") }
 
         guard let plistURL = appBundle.appendingPathComponent("Info.plist"),
-              let info = try? PropertyListSerialization.data(fromPropertyListAt: plistURL, options: [], format: nil),
-              let dict = try? PropertyListSerialization.propertyList(from: info, options: [], format: nil) as? [String: Any]
+              let plistData = try? Data(contentsOf: plistURL),
+              let dict = try? PropertyListSerialization.propertyList(from: plistData, options: [], format: nil) as? [String: Any]
         else { throw EngineError.plistMissing }
 
         let bundleId = (dict["CFBundleIdentifier"] as? String) ?? "unknown.bundle.id"

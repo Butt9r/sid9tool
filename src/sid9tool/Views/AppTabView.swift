@@ -15,7 +15,7 @@ struct AppTabView: View {
                 }
                 .padding()
             }
-            .background(.background.secondary)
+            .background(Color(.systemGroupedBackground))
             .navigationTitle("App")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

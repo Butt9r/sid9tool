@@ -72,7 +72,7 @@ struct CertificateProfile: Codable, Equatable {
 
     var daysUntilExpiry: Int? {
         guard let expirationDate else { return nil }
-        return max(0, Int(ceil(expirationDate.timeIntervalSince(Date) / 86400)))
+        return max(0, Int(ceil(expirationDate.timeIntervalSince(Date()) / 86400)))
     }
 }
 

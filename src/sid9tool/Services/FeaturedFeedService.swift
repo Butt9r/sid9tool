@@ -13,7 +13,7 @@ final class FeaturedFeedService: ObservableObject {
 
     static let cacheFile = "featured-feed-cache.json"
 
-    init(initialFeed: FeaturedFeed = Self.builtinSample()) {
+    init(initialFeed: FeaturedFeed = FeaturedFeedService.builtinSample()) {
         self.feed = initialFeed
         self.status = .builtin
     }
@@ -41,8 +41,8 @@ final class FeaturedFeedService: ObservableObject {
         }
         do {
             let (data, _) = try await URLSession.shared.data(from: url)
-            let fresh = try decode(data)
-            try? data.write(to: cacheURL, options: .atomic)
+            let fresh = try Self.decode(data)
+            try? data.write(to: Self.cacheURL, options: .atomic)
             feed = fresh
             status = .live
         } catch {

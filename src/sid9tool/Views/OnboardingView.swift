@@ -21,7 +21,7 @@ struct OnboardingView: View {
                 }
                 .padding()
             }
-            .background(.background.secondary)
+            .background(Color(.systemGroupedBackground))
             .toolbar(.hidden, for: .tabBar)
         }
     }
