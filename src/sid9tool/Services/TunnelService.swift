@@ -21,18 +21,18 @@ final class TunnelService {
         var ifap: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&ifap) == 0 else { return false }
         defer { freeifaddrs(ifap) }
-        var current: UnsafeMutablePointer<ifaddrs> = ifap!
-        var found = false
-        while true {
-            let name = String(cString: current.pointee.ifa_name)
-            if name.hasPrefix("utun") || name.hasPrefix("ipsec") || name.hasPrefix("tun") {
-                found = true
-                break
-            }
-            if current.pointee.ifa_next == nil { break }
-            current = current.pointee.ifa_next!
+        return Self.scan(ifaddrs: ifap)
+    }
+
+    /// Recursively walk the ifaddrs linked list (guaranteed finite — the kernel
+    /// terminates the list with a nil ifa_next).
+    private static func scan(ifaddrs current: UnsafeMutablePointer<ifaddrs>?) -> Bool {
+        guard let current = current else { return false }
+        let name = String(cString: current.pointee.ifa_name)
+        if name.hasPrefix("utun") || name.hasPrefix("ipsec") || name.hasPrefix("tun") {
+            return true
         }
-        return found
+        return Self.scan(ifaddrs: current.pointee.ifa_next)
     }
 
     /// Probe the configured tunnel endpoint (best-effort, 2s timeout).
