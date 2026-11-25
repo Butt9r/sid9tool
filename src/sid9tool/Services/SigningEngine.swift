@@ -177,8 +177,8 @@ final class SigningEngine: ObservableObject {
         let entitlementsURL: URL?
     }
 
-    /// Full re-sign + package pipeline (sandbox-safe, no external binary required
-    /// for the file stage; the final zip step uses the system `zip` when present).
+    /// Full re-sign + package pipeline (sandbox-safe; the final zip step uses a
+    /// pure-Swift stored-ZIP writer, no external binary required).
     ///
     /// Steps:
     ///  1. Validate the stored .p12 and the provisioning profile.
