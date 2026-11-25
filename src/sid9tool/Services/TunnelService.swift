@@ -21,15 +21,16 @@ final class TunnelService {
         var ifap: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&ifap) == 0 else { return false }
         defer { freeifaddrs(ifap) }
-        var ptr = ifap
-        while let current = ptr {
+        var found = false
+        while let current = ifap {
             let name = String(cString: current.pointee.ifa_name)
             if name.hasPrefix("utun") || name.hasPrefix("ipsec") || name.hasPrefix("tun") {
-                return true
+                found = true
+                break
             }
-            ptr = current.pointee.ifa_next
+            ifap = current.pointee.ifa_next
         }
-        return false
+        return found
     }
 
     /// Probe the configured tunnel endpoint (best-effort, 2s timeout).
