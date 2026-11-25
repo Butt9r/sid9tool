@@ -359,6 +359,6 @@ final class SigningEngine: ObservableObject {
         put16(0)
 
         try outBuf.write(to: out, options: .atomic)
-        _ = d; _ = crcTable
+        _ = crcTable
     }
 }
