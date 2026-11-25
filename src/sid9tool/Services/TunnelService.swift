@@ -21,14 +21,16 @@ final class TunnelService {
         var ifap: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&ifap) == 0 else { return false }
         defer { freeifaddrs(ifap) }
+        var current: UnsafeMutablePointer<ifaddrs> = ifap!
         var found = false
-        while let current = ifap {
+        while true {
             let name = String(cString: current.pointee.ifa_name)
             if name.hasPrefix("utun") || name.hasPrefix("ipsec") || name.hasPrefix("tun") {
                 found = true
                 break
             }
-            ifap = current.pointee.ifa_next
+            if current.pointee.ifa_next == nil { break }
+            current = current.pointee.ifa_next!
         }
         return found
     }
