@@ -1,5 +1,4 @@
 import Foundation
-import ZipFoundation
 
 /// Built-in local signing core (v1 architecture).
 ///

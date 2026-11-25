@@ -9,18 +9,12 @@ settings:
     SWIFT_VERSION: "5.10"
     IPHONEOS_DEPLOYMENT_TARGET: "16.0"
     CODE_SIGNING_ALLOWED: "NO"
-packages:
-  ZipFoundation:
-    url: https://github.com/mattgallagher/ZipFoundation
-    majorVersion: 0.9.1
 targets:
   sid9tool:
     type: application
     platform: iOS
     sources:
       - path: src/sid9tool
-    dependencies:
-      - package: ZipFoundation
     resources:
       - path: src/sid9tool/Assets.xcassets
     info:
