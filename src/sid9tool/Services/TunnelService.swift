@@ -38,7 +38,7 @@ final class TunnelService {
     /// Probe the configured tunnel endpoint (best-effort, 2s timeout).
     static func probe(endpoint: String) async -> Bool {
         guard let url = URL(string: endpoint), url.scheme?.hasPrefix("http") == true else { return false }
-        await withTaskGroup(of: Bool.self) { group in
+        return await withTaskGroup(of: Bool.self) { group in
             group.addTask {
                 do {
                     var request = URLRequest(url: url)
