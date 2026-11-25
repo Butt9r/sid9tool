@@ -6,6 +6,7 @@ struct SideloadedApp: Identifiable, Codable, Equatable {
     var id: String
     var name: String
     var bundleId: String
+    var version: String // CFBundleShortVersionString from the IPA's Info.plist
     var iconTint: Int // simple placeholder tint index
     var installedAt: Date
     var lastSignatureAt: Date?

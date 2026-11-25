@@ -38,7 +38,7 @@ final class AppState: ObservableObject {
     init() {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        apps = (try? decoder.decode([SideloadedApp].self, from: Self.decodeData(Keys.apps))) ?? Self.sampleApps()
+        apps = (try? decoder.decode([SideloadedApp].self, from: Self.decodeData(Keys.apps))) ?? []
         slot = (try? decoder.decode(SlotUsage.self, from: Self.decodeData(Keys.slot)))
             ?? SlotUsage(occupiedSlots: 1, expiresAt: Calendar.current.date(byAdding: .day, value: 7, to: Date()))
         pairing = try? decoder.decode(PairingProfile.self, from: Self.decodeData(Keys.pairing))
@@ -50,11 +50,12 @@ final class AppState: ObservableObject {
 
     // MARK: - App list operations
 
-    func addApp(name: String, bundleId: String) {
+    func addApp(name: String, bundleId: String, version: String = "") {
         let app = SideloadedApp(
             id: UUID().uuidString,
             name: name,
             bundleId: bundleId,
+            version: version,
             iconTint: Int.random(in: 0..<12),
             installedAt: Date(),
             lastSignatureAt: Date(),
@@ -96,28 +97,5 @@ final class AppState: ObservableObject {
         write(container, Keys.container)
         UserDefaults.standard.set(feedURL, forKey: Keys.feedURL.rawValue)
         UserDefaults.standard.set(onboardingCompleted, forKey: Keys.onboarding.rawValue)
-    }
-
-    // MARK: - Sample data
-
-    private static func sampleApps() -> [SideloadedApp] {
-        [
-            SideloadedApp(id: "demo-1",
-                           name: "LiveContainer",
-                           bundleId: "dev.livecontainer.app",
-                           iconTint: 2,
-                           installedAt: .now,
-                           lastSignatureAt: .now,
-                           signatureExpiresAt: Calendar.current.date(byAdding: .day, value: 6, to: Date()),
-                           isActive: true),
-            SideloadedApp(id: "demo-2",
-                           name: "FileX",
-                           bundleId: "com.filex.app",
-                           iconTint: 5,
-                           installedAt: .now,
-                           lastSignatureAt: .now,
-                           signatureExpiresAt: Calendar.current.date(byAdding: .day, value: 5, to: Date()),
-                           isActive: false)
-        ]
     }
 }

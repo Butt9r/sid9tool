@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// App tab — 3-slot quota header + unlimited reorderable container list.
 struct AppTabView: View {
@@ -90,30 +91,59 @@ struct AppRow: View {
     }
 }
 
-/// Minimal import sheet (v1: name + Bundle ID, real IPA picker in next iteration).
+/// Import sheet — real .ipa file picker (`.fileImporter`) + SigningEngine parsing
+/// of Bundle ID / display name / version from the IPA's Info.plist.
 struct ImportIPASheet: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var localization: LocalizationService
     @Environment(\.dismiss) private var dismiss
-    @State private var name = ""
-    @State private var bundleId = ""
+    @State private var showFilePicker = false
+    @State private var parsed: SigningEngine.ParsedIPA?
+    @State private var errorMessage: String?
+
+    private static let ipaTypes: [UTType] = {
+        if let ipa = UTType(filenameExtension: "ipa") { return [ipa, .zip] }
+        return [.zip]
+    }()
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 14) {
-                TextField(localization.t("App 名稱", "App Name", "App 名称"), text: $name)
-                    .textFieldStyle(.roundedBorder)
-                TextField("Bundle ID", text: $bundleId)
-                    .textFieldStyle(.roundedBorder)
-                    .autocorrectionDisabled()
-                GlassButton(title: localization.t("加入清單", "Add", "加入清单")) {
-                    let trimmed = name.trimmingCharacters(in: .whitespaces)
-                    if !trimmed.isEmpty {
-                        appState.addApp(name: trimmed, bundleId: bundleId.isEmpty ? trimmed : bundleId)
-                    }
-                    dismiss()
+                GlassButton(title: localization.t("選擇 .ipa 檔案", "Choose .ipa File", "选择 .ipa 文件")) {
+                    errorMessage = nil
+                    showFilePicker = true
                 }
-                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+
+                if let parsed {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(localization.t("名稱", "Name", "名称")).font(.caption).foregroundStyle(.secondary)
+                        Text(parsed.displayName).font(.subheadline.weight(.medium))
+                        Text("Bundle ID").font(.caption).foregroundStyle(.secondary)
+                        Text(parsed.bundleId).font(.caption).monospaced()
+                        Text("Version").font(.caption).foregroundStyle(.secondary)
+                        Text(parsed.shortVersion).font(.caption)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(Color(.secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                    GlassButton(title: localization.t("加入清單", "Add", "加入清单")) {
+                        appState.addApp(name: parsed.displayName,
+                                        bundleId: parsed.bundleId,
+                                        version: parsed.shortVersion)
+                        dismiss()
+                    }
+                }
+
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                Spacer(minLength: 0)
             }
             .padding()
             .navigationTitle(localization.t("匯入 IPA", "Import IPA", "导入 IPA"))
@@ -122,7 +152,34 @@ struct ImportIPASheet: View {
                     Button(localization.t("取消", "Cancel", "取消")) { dismiss() }
                 }
             }
+            .fileImporter(isPresented: $showFilePicker,
+                          allowedContentTypes: Self.ipaTypes,
+                          allowsMultipleSelection: false) { result in
+                switch result {
+                case .failure(let error):
+                    errorMessage = error.localizedDescription
+                case .success(let url):
+                    handleSelection(url)
+                }
+            }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
+    }
+
+    private func handleSelection(_ url: URL) {
+        let didAccess = url.startAccessingSecurityScopedResource()
+        do {
+            let destination = StorageService.downloads.appendingPathComponent("import-\(UUID().uuidString).ipa")
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.removeItem(at: destination)
+            }
+            try FileManager.default.copyItem(at: url, to: destination)
+            parsed = try SigningEngine.parse(ipaAt: destination)
+            errorMessage = nil
+        } catch {
+            parsed = nil
+            errorMessage = error.localizedDescription
+        }
+        if didAccess { url.stopAccessingSecurityScopedResource() }
     }
 }
