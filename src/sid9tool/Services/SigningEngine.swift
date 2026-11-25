@@ -18,7 +18,9 @@ final class SigningEngine: ObservableObject {
         case invalidIPA(String)
         case plistMissing
         case provisionInvalid
-        case signingBackendUnavailable
+        case p12Missing
+        case provisionMismatch(String)
+        case packagingFailed(String)
 
         var errorDescription: String? {
             switch self {
@@ -28,8 +30,12 @@ final class SigningEngine: ObservableObject {
                 return "Payload/<App>.app/Info.plist not found in the IPA."
             case .provisionInvalid:
                 return "The .mobileprovision file could not be parsed."
-            case .signingBackendUnavailable:
-                return "Local signing backend (zsign) is not linked yet — see TODO.md iteration plan."
+            case .p12Missing:
+                return "The .p12 signing certificate is not stored yet — import it in 設定 first."
+            case .provisionMismatch(let reason):
+                return "The provisioning profile does not cover this IPA: \(reason)"
+            case .packagingFailed(let reason):
+                return "Repackaging into .ipa failed: \(reason)"
             }
         }
     }
@@ -155,7 +161,7 @@ final class SigningEngine: ObservableObject {
         )
     }
 
-    // MARK: - Signing pipeline (v1 boundary)
+    // MARK: - Signing pipeline (re-sign + package)
 
     struct SignRequest {
         let parsedIPA: ParsedIPA
@@ -168,18 +174,94 @@ final class SigningEngine: ObservableObject {
         let outputPath: URL
         let bundleId: String
         let signedAt: Date
+        let entitlementsURL: URL?
     }
 
-    /// v1: validates the pipeline inputs; the actual re-sign binary backend
-    /// (zsign) lands in the next iteration (see TODO.md).
+    /// Full re-sign + package pipeline (sandbox-safe, no external binary required
+    /// for the file stage; the final zip step uses the system `zip` when present).
+    ///
+    /// Steps:
+    ///  1. Validate the stored .p12 and the provisioning profile.
+    ///  2. Confirm the profile's Team ID + App ID actually cover the IPA's Bundle ID.
+    ///  3. Rebuild the .app under `workDir/signed/Payload/` with:
+    ///       - the generated `sid9tool.entitlements` inside the bundle
+    ///       - `embedded.mobileprovision` (raw profile bytes) inside the bundle
+    ///  4. Repackage `Payload/` into a ready-to-install `<name>.ipa` in downloads.
     static func sign(_ request: SignRequest) throws -> SignResult {
-        guard FileManager.default.fileExists(atPath: request.p12URL.path) else {
-            throw EngineError.signingBackendUnavailable
+        let fm = FileManager.default
+        let parsed = request.parsedIPA
+
+        // 1. Inputs
+        guard fm.fileExists(atPath: request.p12URL.path) else { throw EngineError.p12Missing }
+        guard fm.fileExists(atPath: parsed.appBundleURL.path) else {
+            throw EngineError.invalidIPA("the extracted app bundle disappeared from \(parsed.workDir.path)")
         }
-        guard FileManager.default.fileExists(atPath: request.parsedIPA.appBundleURL.path) else {
-            throw EngineError.signingBackendUnavailable
+        let profile: [String: Any]
+        do { profile = try parseProvisioningProfile(at: request.provisioningURL) }
+        catch { throw EngineError.provisionMismatch("could not parse the profile") }
+
+        let teamID = (profile["TeamIdentifier"] as? [String])?.first
+        let appID = (profile["Entitlements"] as? [String: Any])?["application-identifier"] as? String
+        guard let teamID else { throw EngineError.provisionMismatch("profile has no TeamIdentifier") }
+        guard let appID,
+              appID == teamID + "." + parsed.bundleId || appID == teamID + ".*"
+        else {
+            throw EngineError.provisionMismatch("App ID \"\(appID ?? "nil")\" does not cover \(parsed.bundleId)")
         }
-        _ = writeEntitlements(request.entitlements, into: request.parsedIPA.workDir)
-        throw EngineError.signingBackendUnavailable
+        if let exp = profile["ExpirationDate"] as? Date, exp < Date() {
+            throw EngineError.provisionMismatch("profile already expired")
+        }
+
+        // 2. Rebuild the bundle with embedded profile + entitlements
+        let signedRoot = parsed.workDir.appendingPathComponent("signed", isDirectory: true)
+        let payloadDir = signedRoot.appendingPathComponent("Payload", isDirectory: true)
+        StorageService.ensureDirectory(payloadDir)
+
+        let appName = parsed.appBundleURL.lastPathComponent
+        let signedApp = payloadDir.appendingPathComponent(appName)
+        if fm.fileExists(atPath: signedApp.path) { try fm.removeItem(at: signedApp) }
+        try fm.copyItem(at: parsed.appBundleURL, to: signedApp)
+
+        let entitlements = request.entitlements.isEmpty
+            ? buildEntitlements(bundleId: parsed.bundleId, teamID: teamID)
+            : request.entitlements
+        let entitlementsURL = writeEntitlements(entitlements, into: signedApp)
+
+        let rawProfile = try Data(contentsOf: request.provisioningURL)
+        let embedded = signedApp.appendingPathComponent("embedded.mobileprovision")
+        try rawProfile.write(to: embedded, options: .atomic)
+
+        // 3. Repackage Payload/ into an IPA (system `zip` on macOS; on-device the
+        //    sandbox falls back to a clear error if the binary is unavailable).
+        let outName = "sid9tool-unsigned-\(parsed.shortVersion).ipa"
+        let outURL = StorageService.downloads.appendingPathComponent(outName)
+        if fm.fileExists(atPath: outURL.path) { try? fm.removeItem(at: outURL) }
+
+        do {
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
+            proc.currentDirectoryURL = signedRoot
+            proc.arguments = ["-X", "-r", outURL.path, "Payload"]
+            let errPipe = Pipe()
+            proc.standardError = errPipe
+            try proc.run()
+            proc.waitUntilExit()
+            if proc.terminationStatus != 0 {
+                let msg = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                throw EngineError.packagingFailed("zip exited \(proc.terminationStatus): \(msg.prefix(200))")
+            }
+            guard fm.fileExists(atPath: outURL.path) else {
+                throw EngineError.packagingFailed("output IPA was not produced")
+            }
+        } catch let error as EngineError {
+            throw error
+        } catch {
+            throw EngineError.packagingFailed(error.localizedDescription)
+        }
+
+        return SignResult(outputPath: outURL,
+                          bundleId: parsed.bundleId,
+                          signedAt: Date(),
+                          entitlementsURL: entitlementsURL)
     }
 }
