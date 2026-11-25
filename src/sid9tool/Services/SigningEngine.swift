@@ -275,7 +275,7 @@ final class SigningEngine: ObservableObject {
 
         let now = Date()
         let d = (now.timeIntervalSince1970) as UInt32
-        let msSinceMidnight = UInt16((d % 86400) * 1000 / 86) // seconds->1/2s units approx
+        let msSinceMidnight = UInt16(((d % 86400) * 1000 / 86) % 65536) // seconds->1/2s units approx (pre-wrap to avoid UInt16 trap)
         let daysSinceEpoch = UInt16(d / 86400 % 16384)
         let ms2 = UInt16((msSinceMidnight / 20) % 20) // 1/20s -> 1/100s
         let ms10 = ms2 * 100
