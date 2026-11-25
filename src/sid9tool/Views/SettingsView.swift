@@ -12,8 +12,10 @@ struct SettingsView: View {
     @State private var certNote: String?
 
     private static let pairingTypes: [UTType] = {
-        var types: [UTType] = [.mobileDevicePairing]
+        var types: [UTType] = []
+        if let pairing = UTType(filenameExtension: "mobiledevicepairing") { types.append(pairing) }
         if let json = UTType(filenameExtension: "json") { types.append(json) }
+        if types.isEmpty { types = [.item] }
         return types
     }()
     private static var p12Type: UTType? { UTType(filenameExtension: "p12") }
