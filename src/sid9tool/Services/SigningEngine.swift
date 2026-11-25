@@ -55,23 +55,23 @@ final class SigningEngine: ObservableObject {
         StorageService.ensureDirectory(unzipDest)
 
         do {
-            let archive = Archive(url: url, readOnly: true)
+            let archive = try Archive(url: url, readOnly: true)
             try archive.extract(to: unzipDest)
         } catch {
             throw EngineError.invalidIPA("unzip failed: \(error.localizedDescription)")
         }
 
         let fm = FileManager.default
-        guard let payloadDir = fm.contentsOfDirectory(at: unzipDest, includingPropertiesForKeys: nil)
-            .first(where: { $0.lastPathComponent.caseInsensitiveCompare("Payload") == .orderedSame })
-            else { throw EngineError.invalidIPA("no Payload/ directory") }
+        guard let payloadContents = try? fm.contentsOfDirectory(at: unzipDest, includingPropertiesForKeys: nil),
+              let payloadDir = payloadContents.first(where: { $0.lastPathComponent.caseInsensitiveCompare("Payload") == .orderedSame })
+        else { throw EngineError.invalidIPA("no Payload/ directory") }
 
-        guard let appBundle = fm.contentsOfDirectory(at: payloadDir, includingPropertiesForKeys: nil)
-            .first(where: { $0.pathExtension == "app" })
-            else { throw EngineError.invalidIPA("no .app bundle inside Payload/") }
+        guard let payloadApps = try? fm.contentsOfDirectory(at: payloadDir, includingPropertiesForKeys: nil),
+              let appBundle = payloadApps.first(where: { $0.pathExtension == "app" })
+        else { throw EngineError.invalidIPA("no .app bundle inside Payload/") }
 
-        guard let plistURL = appBundle.appendingPathComponent("Info.plist"),
-              let plistData = try? Data(contentsOf: plistURL),
+        let plistURL = appBundle.appendingPathComponent("Info.plist")
+        guard let plistData = try? Data(contentsOf: plistURL),
               let dict = try? PropertyListSerialization.propertyList(from: plistData, options: [], format: nil) as? [String: Any]
         else { throw EngineError.plistMissing }
 

@@ -31,3 +31,4 @@ Packages/
 
 # Local helper tools (never commit)
 tools/
+auto-run.ps1

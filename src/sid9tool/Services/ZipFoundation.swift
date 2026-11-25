@@ -54,7 +54,7 @@ final class Archive {
     /// Extracts all entries into the destination directory, preserving relative paths.
     func extract(to dest: URL) throws {
         let size = data.count
-        let entries = Archive.parseCentralDirectory(at: cdOffset, in: data)
+        let entries = try Archive.parseCentralDirectory(at: cdOffset, in: data)
         try FileManager.default.createDirectory(at: dest, withIntermediateDirectories: true)
 
         for entry in entries {
@@ -177,7 +177,7 @@ final class Archive {
             ptr.pointee.next_out = outBuf.withUnsafeMutableBytes { $0.baseAddress?.assumingMemoryBound(to: Bytef.self) }
             ptr.pointee.avail_out = uInt(outCap)
             guard inflateInit2_(&ptr.pointee, -15, zlibVersion(), Int32(MemoryLayout<z_stream>.size)) == Z_OK else { return Int32(-1) }
-            let r = inflate(&ptr.pointee, Z_FINISH)
+            let r = zlib.inflate(&ptr.pointee, Z_FINISH)
             deflateEnd(&ptr.pointee)
             return Int32(r)
         }

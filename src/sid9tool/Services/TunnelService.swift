@@ -10,17 +10,26 @@ final class TunnelService {
         var reachable: Bool
     }
 
-    /// Detect whether a VPN interface is up (interface index >= 0 with vpn flag is
-    /// unavailable to apps; we infer from an active interface that is not Wi-Fi).
+    /// Detect whether a VPN/tunnel interface is up (utun/ipsec/tun present on the
+    /// device — the reliable way for an app to infer an active VPN on iOS).
     static func currentStatus(endpoint: String) -> TunnelStatus {
-        let interfaces = NWInterface.all()
-        let hasVPN = interfaces.contains { iface in
-            iface.type == .interface
-            && !iface.name.lowercased().contains("wifi")
-            && !iface.name.lowercased().contains("awdl")
-            && !iface.name.lowercased().contains("en0")
-        }
+        let hasVPN = Self.hasTunnelInterface()
         return TunnelStatus(vpnConnected: hasVPN, tunnelEndpoint: endpoint, reachable: false)
+    }
+
+    private static func hasTunnelInterface() -> Bool {
+        var ifap: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifap) == 0 else { return false }
+        defer { freeifaddrs(ifap) }
+        var ptr = ifap
+        while let current = ptr {
+            let name = String(cString: current.pointee.ifa_name)
+            if name.hasPrefix("utun") || name.hasPrefix("ipsec") || name.hasPrefix("tun") {
+                return true
+            }
+            ptr = current.pointee.ifa_next
+        }
+        return false
     }
 
     /// Probe the configured tunnel endpoint (best-effort, 2s timeout).
