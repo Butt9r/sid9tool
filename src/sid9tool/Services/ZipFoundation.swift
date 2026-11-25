@@ -79,7 +79,7 @@ final class Archive {
             } else if entry.compressionMethod == 8 {
                 if entry.uncompressedSize == 0 { continue }
                 let raw = [UInt8](data.subdata(in: dataStart..<dataStart + rawLen))
-                out = try Archive.inflate(raw, expectedLength: entry.uncompressedSize)
+                out = try Archive.rawInflate(raw, expectedLength: entry.uncompressedSize)
             } else {
                 throw ZipError.inflateFailed // only stored + deflate are supported
             }
@@ -168,7 +168,7 @@ final class Archive {
     /// Chunked raw-deflate inflate: one persistent `z_stream` feeds the whole
     /// input and drains output in fixed-size chunks, looping `inflate` until
     /// `Z_STREAM_END` so entries larger than any single buffer decompress fully.
-    private static func inflate(_ input: [UInt8], expectedLength: Int) throws -> Data {
+    private static func rawInflate(_ input: [UInt8], expectedLength: Int) throws -> Data {
         #if canImport(zlib)
         var strm = z_stream()
         strm.next_in = UnsafeMutablePointer<Bytef>(mutating: input)
