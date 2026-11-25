@@ -231,25 +231,14 @@ final class SigningEngine: ObservableObject {
         let embedded = signedApp.appendingPathComponent("embedded.mobileprovision")
         try rawProfile.write(to: embedded, options: .atomic)
 
-        // 3. Repackage Payload/ into an IPA (system `zip` on macOS; on-device the
-        //    sandbox falls back to a clear error if the binary is unavailable).
+        // 3. Repackage Payload/ into an IPA with a pure-Swift stored-ZIP writer
+        //    (no external `zip` binary — works inside the iOS sandbox).
         let outName = "sid9tool-unsigned-\(parsed.shortVersion).ipa"
         let outURL = StorageService.downloads.appendingPathComponent(outName)
         if fm.fileExists(atPath: outURL.path) { try? fm.removeItem(at: outURL) }
 
         do {
-            let proc = Process()
-            proc.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
-            proc.currentDirectoryURL = signedRoot
-            proc.arguments = ["-X", "-r", outURL.path, "Payload"]
-            let errPipe = Pipe()
-            proc.standardError = errPipe
-            try proc.run()
-            proc.waitUntilExit()
-            if proc.terminationStatus != 0 {
-                let msg = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-                throw EngineError.packagingFailed("zip exited \(proc.terminationStatus): \(msg.prefix(200))")
-            }
+            try Self.zipStored(contentsOf: signedRoot, to: outURL)
             guard fm.fileExists(atPath: outURL.path) else {
                 throw EngineError.packagingFailed("output IPA was not produced")
             }
@@ -263,5 +252,113 @@ final class SigningEngine: ObservableObject {
                           bundleId: parsed.bundleId,
                           signedAt: Date(),
                           entitlementsURL: entitlementsURL)
+    }
+
+    // MARK: - Pure-Swift stored-ZIP writer (no external tools)
+
+    /// Recursively zips `root` (e.g. the dir containing `Payload/`) into a ZIP
+    /// archive using the STORED method (compression 0). This is fully
+    /// sandbox-safe — no `Process`, no `/usr/bin/zip`.
+    private static func zipStored(contentsOf root: URL, to out: URL) throws {
+        let fm = FileManager.default
+        var files: [URL] = []
+        let isDir: Bool
+        do { isDir = (try fm.contentsOfDirectory(atPath: root.path)).isEmpty ? false : true } catch { isDir = false }
+        guard isDir else { throw EngineError.packagingFailed("zip source is not a directory") }
+        let enum = fm.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [])
+        for case let fileURL as URL in enum {
+            let values = try fileURL.resourceValues(forKeys: [.isDirectoryKey])
+            if values.isDirectory == true { continue }
+            files.append(fileURL)
+        }
+        files.sort { $0.path < $1.path }
+
+        let now = Date()
+        let d = (now.timeIntervalSince1970) as UInt32
+        let msSinceMidnight = UInt16((d % 86400) * 1000 / 86) // seconds->1/2s units approx
+        let daysSinceEpoch = UInt16(d / 86400 % 16384)
+        let ms2 = UInt16((msSinceMidnight / 20) % 20) // 1/20s -> 1/100s
+        let ms10 = ms2 * 100
+        let m = UInt16((d % 3600) / 60)
+        let h = UInt16((d % 86400) / 3600)
+        var dosTime: UInt16 = (UInt16(h) << 11) | (m << 5) | (ms10 / 32)
+        _ = msSinceMidnight
+        let dosDate: UInt16 = (UInt16(daysSinceEpoch & 0x1FFF)) | (UInt16(1) << 9)
+        var crcTable = [UInt32](repeating: 0, count: 256)
+        for i in 0..<256 {
+            var c = UInt32(i)
+            for _ in 0..<8 { c = (c & 1) != 0 ? (0xEDB88320 ^ (c >> 1)) : (c >> 1) }
+            crcTable[i] = c
+        }
+        func crc32(_ data: Data) -> UInt32 {
+            var c: UInt32 = 0xFFFFFFFF
+            for b in data {
+                c = crcTable[Int((c ^ UInt32(b)) & 0xFF)] ^ (c >> 8)
+            }
+            return c ^ 0xFFFFFFFF
+        }
+
+        var outBuf = Data()
+        func put(_ x: UInt8) { outBuf.append(x) }
+        func put16(_ x: UInt16) { put(UInt8(x & 0xFF)); put(UInt8((x >> 8) & 0xFF)) }
+        func put32(_ x: UInt32) { put(UInt8(x & 0xFF)); put(UInt8((x >> 8) & 0xFF)); put(UInt8((x >> 16) & 0xFF)); put(UInt8((x >> 24) & 0xFF)) }
+
+        var cdEntries = [(offset: UInt32, crc: UInt32, compSize: UInt32, uncSize: UInt32, name: [UInt8], attrs: UInt32, dosDate: UInt16, dosTime: UInt16)]()
+
+        for fileURL in files {
+            let rel = String(fileURL.path.dropFirst(root.path.count).drop(while: { $0 == "/" }))
+            let nameBytes = Array(rel.utf8)
+            let data = try Data(contentsOf: fileURL)
+            let crc = crc32(data)
+            let off = UInt32(outBuf.count)
+            put32(0x04034B50) // local file header sig
+            put16(0x14)       // version needed
+            put16(0x0800)     // UTF-8 names flag
+            put16(0)          // stored
+            put16(dosTime)
+            put16(dosDate)
+            put32(crc)
+            put32(UInt32(data.count))
+            put32(UInt32(data.count))
+            put16(UInt16(nameBytes.count))
+            put16(0)          // extra len
+            outBuf.append(contentsOf: nameBytes)
+            outBuf.append(data)
+            cdEntries.append((offset: off, crc: crc, compSize: UInt32(data.count), uncSize: UInt32(data.count), name: nameBytes, attrs: 0, dosDate: dosDate, dosTime: dosTime))
+        }
+
+        let cdStart = UInt32(outBuf.count)
+        for e in cdEntries {
+            put32(0x02014B50) // central dir sig
+            put16(0x14)       // version made by
+            put16(0x14)       // version needed
+            put16(0x0800)     // flags
+            put16(0)          // method stored
+            put16(e.dosTime)
+            put16(e.dosDate)
+            put32(e.crc)
+            put32(e.compSize)
+            put32(e.uncSize)
+            put16(UInt16(e.name.count))
+            put16(0)          // extra len
+            put16(0)          // comment len
+            put16(0)          // disk number
+            put16(0)          // internal attrs
+            put32(e.attrs)
+            put32(e.offset)
+            outBuf.append(contentsOf: e.name)
+        }
+        let cdEnd = UInt32(outBuf.count)
+        put32(0x06054B50) // EOCD sig
+        put16(0)
+        put16(0)
+        put16(UInt16(cdEntries.count))
+        put16(UInt16(cdEntries.count))
+        put32(cdEnd - cdStart)
+        put32(cdStart)
+        put16(0)
+
+        try outBuf.write(to: out, options: .atomic)
+        _ = d; _ = crcTable
     }
 }
