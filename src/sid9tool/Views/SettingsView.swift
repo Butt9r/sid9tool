@@ -1,10 +1,23 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Settings tab — pairing / certificates / container / VPN / storage / language / About.
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var localization: LocalizationService
     @State private var storage: [StorageService.SectionUsage] = StorageService.scanUsage()
+    @State private var showPairingPicker = false
+    @State private var showP12Picker = false
+    @State private var showProvisionPicker = false
+    @State private var certNote: String?
+
+    private static let pairingTypes: [UTType] = {
+        var types: [UTType] = [.mobileDevicePairing]
+        if let json = UTType(filenameExtension: "json") { types.append(json) }
+        return types
+    }()
+    private static var p12Type: UTType? { UTType(filenameExtension: "p12") }
+    private static var provisionType: UTType? { UTType(filenameExtension: "mobileprovision") }
 
     var body: some View {
         NavigationStack {
@@ -19,6 +32,54 @@ struct SettingsView: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle(localization.t("設定", "Settings", "设置"))
+            .fileImporter(isPresented: $showPairingPicker,
+                          allowedContentTypes: Self.pairingTypes,
+                          allowsMultipleSelection: false) { result in
+                switch result {
+                case .failure(let error):
+                    certNote = error.localizedDescription
+                case .success(let urls):
+                    if let url = urls.first {
+                        appState.pairing = PairingService().importPairing(from: url)
+                    }
+                }
+            }
+            .fileImporter(isPresented: $showP12Picker,
+                          allowedContentTypes: [Self.p12Type].compactMap { $0 },
+                          allowsMultipleSelection: false) { result in
+                switch result {
+                case .failure(let error):
+                    certNote = error.localizedDescription
+                case .success(let urls):
+                    if let url = urls.first { handleCertificateFile(url) }
+                }
+            }
+            .fileImporter(isPresented: $showProvisionPicker,
+                          allowedContentTypes: [Self.provisionType].compactMap { $0 },
+                          allowsMultipleSelection: false) { result in
+                switch result {
+                case .failure(let error):
+                    certNote = error.localizedDescription
+                case .success(let urls):
+                    if let url = urls.first { handleCertificateFile(url) }
+                }
+            }
+        }
+    }
+
+    private func handleCertificateFile(_ url: URL) {
+        let didAccess = url.startAccessingSecurityScopedResource()
+        let profile = CertificateService().importFile(url)
+        if didAccess { url.stopAccessingSecurityScopedResource() }
+        if let profile {
+            appState.certificate = profile
+            certNote = localization.t(".p12 + .mobileprovision 匯入完成",
+                                      ".p12 + .mobileprovision imported",
+                                      ".p12 + .mobileprovision 导入完成")
+        } else {
+            certNote = localization.t("已存入。請同時匯入 .p12 與 .mobileprovision",
+                                      "Stored. Import both .p12 and .mobileprovision",
+                                      "已存入。请同时导入 .p12 与 .mobileprovision")
         }
     }
 
@@ -33,9 +94,18 @@ struct SettingsView: View {
                 if let pairing = appState.pairing {
                     Button(localization.t("移除", "Remove", "移除"), role: .destructive) {
                         appState.pairing = nil
+                        PairingService().reset()
                     }
                     .font(.caption)
                 }
+            }
+            if let udid = appState.pairing?.deviceUDID {
+                LabeledContent("UDID", value: udid).font(.caption)
+            }
+            Button {
+                showPairingPicker = true
+            } label: {
+                Label(localization.t("匯入 Pairing 檔", "Import Pairing File", "导入配对文件"), systemImage: "square.and.arrow.down")
             }
         } header: {
             Text(localization.t("配對檔案", "Pairing", "配对文件"))
@@ -59,6 +129,14 @@ struct SettingsView: View {
                                    "No .p12 / .mobileprovision imported",
                                    "尚未导入 .p12 / .mobileprovision"))
                     .foregroundStyle(.secondary)
+            }
+            HStack {
+                Button(localization.t("匯入 .p12", "Import .p12", "导入 .p12")) { showP12Picker = true }
+                Button(localization.t("匯入 .mobileprovision", "Import .mobileprovision", "导入 .mobileprovision")) { showProvisionPicker = true }
+            }
+            .font(.caption)
+            if let certNote {
+                Text(certNote).font(.caption).foregroundStyle(.secondary)
             }
         } header: {
             Text(localization.t("憑證", "Certificates", "证书"))

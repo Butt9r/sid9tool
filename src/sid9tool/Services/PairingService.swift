@@ -24,12 +24,32 @@ final class PairingService {
                 importedAt: .now,
                 fileSize: (try? FileManager.default.attributesOfItem(atPath: destURL.path)[.size] as? Int64) ?? 0,
                 isRP: isRP,
-                deviceUDID: guessUDID(named: fileName),
+                deviceUDID: parseUDID(fromFileAt: destURL) ?? guessUDID(named: fileName),
                 isTrusted: true
             )
         } catch {
             return nil
         }
+    }
+
+    /// Parse the pairing file's plist/JSON for the device UDID (Host.UDID, RPPairing, or ProvisionedUDID).
+    private func parseUDID(fromFileAt url: URL) -> String? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        var dict: [String: Any]?
+        if let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] {
+            dict = plist
+        } else if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            dict = json
+        }
+        guard let dict else { return nil }
+        if let host = dict["Host"] as? [String: Any] {
+            if let udid = host["UDID"] as? String { return udid }
+            if let options = host["HostOptions"] as? [String: Any], let udid = options["UDID"] as? String { return udid }
+        }
+        if let udid = dict["RPPairing"] as? [String: Any],
+           let host = udid["Host"] as? [String: Any], let value = host["UDID"] as? String { return value }
+        if let udid = dict["ProvisionedUDID"] as? String { return udid }
+        return nil
     }
 
     private func guessUDID(named fileName: String) -> String? {

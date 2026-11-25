@@ -3,6 +3,35 @@ import Security
 
 /// Certificate (.p12 + .mobileprovision) import & expiry parsing.
 final class CertificateService {
+    static var directory: URL {
+        let u = StorageService.documents.appendingPathComponent("certificates", isDirectory: true)
+        StorageService.ensureDirectory(u)
+        return u
+    }
+
+    /// Store a .p12 or .mobileprovision file; when both are present, build & return the profile.
+    @MainActor
+    func importFile(_ sourceURL: URL) -> CertificateProfile? {
+        let name = sourceURL.lastPathComponent
+        do {
+            let destURL = Self.directory.appendingPathComponent(name)
+            if FileManager.default.fileExists(atPath: destURL.path) {
+                try FileManager.default.removeItem(at: destURL)
+            }
+            try FileManager.default.copyItem(at: sourceURL, to: destURL)
+        } catch {
+            return nil
+        }
+        let p12File = try? FileManager.default.contentsOfDirectory(atPath: Self.directory.path)
+            .first { $0.hasSuffix(".p12") }
+        let provisionFile = try? FileManager.default.contentsOfDirectory(atPath: Self.directory.path)
+            .first { $0.hasSuffix(".mobileprovision") }
+        guard let p12File, let provisionFile else { return nil }
+        return importCertificates(
+            p12URL: Self.directory.appendingPathComponent(p12File),
+            provisionURL: Self.directory.appendingPathComponent(provisionFile)
+        )
+    }
 
     /// Import a .p12 + .mobileprovision pair; returns a parsed profile.
     @MainActor
