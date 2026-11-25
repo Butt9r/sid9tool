@@ -158,8 +158,10 @@ struct ImportIPASheet: View {
                 switch result {
                 case .failure(let error):
                     errorMessage = error.localizedDescription
-                case .success(let url):
-                    handleSelection(url)
+                case .success(let urls):
+                    if let url = urls.first {
+                        handleSelection(url)
+                    }
                 }
             }
         }
