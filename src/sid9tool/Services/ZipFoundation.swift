@@ -165,29 +165,45 @@ final class Archive {
     }
     // MARK: - Raw inflate (zlib)
 
+    /// Chunked raw-deflate inflate: one persistent `z_stream` feeds the whole
+    /// input and drains output in fixed-size chunks, looping `inflate` until
+    /// `Z_STREAM_END` so entries larger than any single buffer decompress fully.
     private static func inflate(_ input: [UInt8], expectedLength: Int) throws -> Data {
         #if canImport(zlib)
         var strm = z_stream()
         strm.next_in = UnsafeMutablePointer<Bytef>(mutating: input)
         strm.avail_in = uInt(input.count)
-        let outCap = max(expectedLength, 1024)
-        var outBuf = [UInt8](repeating: 0, count: outCap)
-        var total: Int = 0
-        let ret = withUnsafeMutablePointer(to: &strm) { ptr in
-            ptr.pointee.next_out = outBuf.withUnsafeMutableBytes { $0.baseAddress?.assumingMemoryBound(to: Bytef.self) }
-            ptr.pointee.avail_out = uInt(outCap)
-            guard inflateInit2_(&ptr.pointee, -15, zlibVersion(), Int32(MemoryLayout<z_stream>.size)) == Z_OK else { return Int32(-1) }
-            let r = zlib.inflate(&ptr.pointee, Z_FINISH)
-            deflateEnd(&ptr.pointee)
-            return Int32(r)
+        guard inflateInit2_(&strm, -15, zlibVersion(), Int32(MemoryLayout<z_stream>.size)) == Z_OK else {
+            throw ZipError.inflateFailed
         }
-        if ret == Z_STREAM_END || ret == Z_OK {
-            total = outCap - Int(strm.avail_out)
+        defer { deflateEnd(&strm) }
+
+        let chunkSize = 64 * 1024
+        var output = Data()
+        while true {
+            var chunk = [UInt8](repeating: 0, count: chunkSize)
+            let ret = chunk.withUnsafeMutableBytes { bufPtr -> Int32 in
+                strm.next_out = bufPtr.baseAddress?.assumingMemoryBound(to: Bytef.self)
+                strm.avail_out = uInt(chunkSize)
+                return inflate(&strm, Z_NO_FLUSH)
+            }
+            let produced = chunkSize - Int(strm.avail_out)
+            if produced > 0 {
+                output.append(contentsOf: chunk[0..<produced])
+            }
+            switch ret {
+            case Z_STREAM_END:
+                return output
+            case Z_BUF_ERROR where strm.avail_in == 0:
+                // Input exhausted but stream not fully ended — accept what we have
+                // (matches previous single-pass acceptance behaviour).
+                return output
+            case Z_OK, Z_BUF_ERROR:
+                continue
+            default:
+                throw ZipError.inflateFailed
+            }
         }
-        if total > 0, ret == Z_STREAM_END || ret == Z_OK || ret == Z_BUF_ERROR {
-            return Data(outBuf[0..<total])
-        }
-        throw ZipError.inflateFailed
         #else
         throw ZipError.inflateFailed
         #endif

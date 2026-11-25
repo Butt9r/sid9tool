@@ -49,7 +49,10 @@ struct FeaturedView: View {
 
 struct FeaturedCard: View {
     let app: FeaturedApp
+    @EnvironmentObject var appState: AppState
     @EnvironmentObject var localization: LocalizationService
+    @State private var installing = false
+    @State private var statusMessage: String?
 
     var body: some View {
         GlassCard {
@@ -65,17 +68,28 @@ struct FeaturedCard: View {
                     Spacer()
                     if app.ipaUrl != nil {
                         Button {
-                            // v1: deep-link install flow handled by SigningEngine later
+                            installFromFeed()
                         } label: {
-                            Image(systemName: "arrow.down.circle.fill")
-                                .font(.title3)
+                            if installing {
+                                ProgressView()
+                            } else {
+                                Image(systemName: "arrow.down.circle.fill")
+                                    .font(.title3)
+                            }
                         }
+                        .disabled(installing)
                         .accessibilityLabel(localization.t("安裝", "Install", "安装"))
                     }
                 }
                 Text(app.description)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                if let statusMessage {
+                    Text(statusMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 HStack(spacing: 6) {
                     ForEach(app.tags, id: \.self) { tag in
                         Text(tag)
@@ -84,6 +98,37 @@ struct FeaturedCard: View {
                             .padding(.vertical, 3)
                             .background(Capsule().fill(.quaternary))
                     }
+                }
+            }
+        }
+    }
+
+    /// Download the IPA from the feed, parse it with SigningEngine (Bundle ID /
+    /// name / version from Info.plist), and add it to the container list.
+    private func installFromFeed() {
+        guard let remote = app.ipaUrl, !installing else { return }
+        installing = true
+        statusMessage = localization.t("下載中…", "Downloading…", "下载中…")
+        Task {
+            do {
+                let dest = StorageService.downloads.appendingPathComponent("featured-\(UUID().uuidString).ipa")
+                let (tempURL, _) = try await URLSession.shared.download(from: remote)
+                try FileManager.default.moveItem(at: tempURL, to: dest)
+                statusMessage = localization.t("解析中…", "Parsing…", "解析中…")
+                let parsed = try await Task.detached(priority: .userInitiated) {
+                    try SigningEngine.parse(ipaAt: dest)
+                }.value
+                await MainActor.run {
+                    appState.addApp(name: parsed.displayName,
+                                    bundleId: parsed.bundleId,
+                                    version: parsed.shortVersion)
+                    statusMessage = localization.t("已加入清單", "Added to list", "已加入清单")
+                    installing = false
+                }
+            } catch {
+                await MainActor.run {
+                    statusMessage = error.localizedDescription
+                    installing = false
                 }
             }
         }

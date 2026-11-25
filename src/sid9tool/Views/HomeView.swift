@@ -4,6 +4,7 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var localization: LocalizationService
+    @State private var showImportSheet = false
 
     var body: some View {
         NavigationStack {
@@ -18,6 +19,9 @@ struct HomeView: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle(localization.t("首頁", "Home", "首页"))
+            .sheet(isPresented: $showImportSheet) {
+                ImportIPASheet()
+            }
         }
     }
 
@@ -86,7 +90,7 @@ struct HomeView: View {
         VStack(spacing: 10) {
             GlassButton(title: localization.t("匯入 IPA", "Import IPA", "导入 IPA"),
                         systemImage: "square.and.arrow.down") {
-                // Handled by App tab deep action (v1: opens App tab flow)
+                showImportSheet = true
             }
             GlassButton(title: localization.t("重新簽章", "Re-sign", "重新签章"),
                         systemImage: "arrow.triangle.2.circlepath") {
