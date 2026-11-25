@@ -123,11 +123,11 @@ final class SigningEngine: ObservableObject {
         guard let start = bytes.indices.dropLast(marker.count)
             .first(where: { Array(bytes[$0..<$0 + marker.count]) == marker })
         else { throw EngineError.provisionInvalid }
-        let tail = bytes.suffix(from: start)
+        let tail = Data(bytes.suffix(from: start))
         let endMarker = Data("</plist>".utf8)
         guard let endRange = tail.range(of: endMarker) else { throw EngineError.provisionInvalid }
         let end = tail.index(endRange.lowerBound, offsetBy: endMarker.count)
-        let plistData = Data(bytes[start..<end])
+        let plistData = tail.subdata(in: tail.startIndex..<end)
         guard let dict = try? PropertyListSerialization.propertyList(from: plistData,
                                                                      options: [],
                                                                      format: nil) as? [String: Any]

@@ -53,8 +53,9 @@ final class StorageService: ObservableObject {
         }
         var total: Int64 = 0
         for case let fileURL as URL in enumerator {
-            if (try? fileURL.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true {
-                total += (try? fileURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+            if (try? fileURL.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true,
+               let size = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize {
+                total += size
             }
         }
         return total

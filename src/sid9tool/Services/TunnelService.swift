@@ -13,7 +13,7 @@ final class TunnelService {
     /// Detect whether a VPN interface is up (interface index >= 0 with vpn flag is
     /// unavailable to apps; we infer from an active interface that is not Wi-Fi).
     static func currentStatus(endpoint: String) -> TunnelStatus {
-        let interfaces = NWInterface.list()
+        let interfaces = NWInterface.all()
         let hasVPN = interfaces.contains { iface in
             iface.type == .interface
             && !iface.name.lowercased().contains("wifi")
