@@ -186,10 +186,24 @@ struct ImportIPASheet: View {
                     .buttonStyle(.plain)
 
                     GlassButton(title: localization.t("加入清單", "Add", "加入清单")) {
-                        appState.addApp(name: parsed.displayName,
-                                        bundleId: parsed.bundleId,
-                                        version: parsed.shortVersion)
-                        dismiss()
+                        switch appState.addApp(name: parsed.displayName,
+                                               bundleId: parsed.bundleId,
+                                               version: parsed.shortVersion) {
+                        case .granted:
+                            dismiss()
+                        case .noSlotsLeft:
+                            errorMessage = localization.t(
+                                "Slot 配額已滿（3 個），請先移除一個容器再試",
+                                "Slot quota is full (3 apps). Remove a container first",
+                                "Slot 配额已满（3 个），请先移除一个容器再试"
+                            )
+                        case .expired:
+                            errorMessage = localization.t(
+                                "Slot 配額已過期，請重新簽章以續約 7 天",
+                                "Slot quota expired. Re-sign an app to renew for 7 days",
+                                "Slot 配额已过期，请重新签章以续约 7 天"
+                            )
+                        }
                     }
                 }
 

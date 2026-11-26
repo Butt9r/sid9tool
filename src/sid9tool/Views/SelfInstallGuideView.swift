@@ -171,6 +171,25 @@ struct SelfInstallGuideView: View {
             message = localization.t("請先完成 Pairing 與憑證", "Finish pairing & certificate first", "请先完成 Pairing 与证书")
             return
         }
+        // P0-5: self-install goes through the same free-slot quota.
+        switch SlotManager.canInstall(current: appState.slot) {
+        case .granted:
+            break
+        case .noSlotsLeft:
+            message = localization.t(
+                "Slot 配額已滿（3 個），請先在 App 分頁移除一個容器",
+                "Slot quota is full (3 apps). Remove a container in the App tab first",
+                "Slot 配额已满（3 个），请先在 App 分頁移除一个容器"
+            )
+            return
+        case .expired:
+            message = localization.t(
+                "Slot 配額已過期，請先在 App 分頁移除一個容器再重簽",
+                "Slot quota expired. Remove a container to re-sign",
+                "Slot 配额已过期，请先在 App 分頁移除一个容器再重签"
+            )
+            return
+        }
         Task { @MainActor in
             do {
                 let certDir = CertificateService.directory
@@ -195,6 +214,9 @@ struct SelfInstallGuideView: View {
                     stripDebugEntitlement: appState.container.stripDebugEntitlement
                 )
                 let result = try SigningEngine.sign(request)
+                // P0-5: a completed sign refreshes the free slot (renewal
+                // restores the quota for the next 7 days).
+                appState.slot.refreshOnSign()
                 let iso = ISO8601DateFormatter()
                 UserDefaults.standard.set(iso.string(from: Date()), forKey: Self.lastSignedKey)
                 UserDefaults.standard.set(result.outputPath.path, forKey: Self.lastSignedURLKey)

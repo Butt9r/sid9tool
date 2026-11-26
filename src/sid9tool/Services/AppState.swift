@@ -63,7 +63,13 @@ final class AppState: ObservableObject {
 
     // MARK: - App list operations
 
-    func addApp(name: String, bundleId: String, version: String = "") {
+    /// Add a container app, enforcing the free-account slot quota (P0-5).
+    /// Returns the `SlotManager` verdict so callers can show a localized
+    /// error; the app is only appended when the slot is granted.
+    @discardableResult
+    func addApp(name: String, bundleId: String, version: String = "") -> SlotManager.SlotResult {
+        let result = SlotManager.canInstall(current: slot)
+        guard result == .granted else { return result }
         let app = SideloadedApp(
             id: UUID().uuidString,
             name: name,
@@ -76,7 +82,8 @@ final class AppState: ObservableObject {
             isActive: true
         )
         apps.append(app)
-        if slot.occupiedSlots < slot.totalSlots { slot.occupiedSlots += 1 }
+        slot.occupiedSlots += 1
+        return result
     }
 
     func removeApp(_ app: SideloadedApp) {
