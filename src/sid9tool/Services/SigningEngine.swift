@@ -211,6 +211,9 @@ final class SigningEngine: ObservableObject {
         let provisioningURL: URL
         /// Advanced (AltStore-style) resign options; all defaults are no-ops.
         var advanced: ResignAdvanced = ResignAdvanced()
+        /// P0-3: when true, the Apple `get-task-allow` debug entitlement is
+        /// stripped for on-device installs; when false it is kept.
+        var stripDebugEntitlement: Bool = true
     }
 
     struct SignResult {
@@ -247,7 +250,27 @@ final class SigningEngine: ObservableObject {
         let appID = (profile["Entitlements"] as? [String: Any])?["application-identifier"] as? String
         guard let teamID else { throw EngineError.provisionMismatch("profile has no TeamIdentifier") }
         let advanced = request.advanced
-        let bundleToCheck = advanced.customBundleID.isEmpty ? parsed.bundleId : advanced.customBundleID
+        // P0-4: advanced Bundle ID resolution (custom wins over automatic,
+        // automatic wins over the original). The profile must cover the result.
+        let wildcardProfile = ((profile["Entitlements"] as? [String: Any])?["application-identifier"] as? String) == teamID + ".*"
+        let autoBundleID: String?
+        if !advanced.customBundleID.isEmpty {
+            autoBundleID = nil
+        } else if advanced.useAutomaticBundleID {
+            // Explicit profiles: append a safe suffix. Wildcard profiles:
+            // derive a prefix (a suffix on a wildcard ID would not be covered).
+            autoBundleID = wildcardProfile
+                ? teamID + "." + String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(8).lowercased())
+                : parsed.bundleId + "." + teamID
+        } else {
+            autoBundleID = nil
+        }
+        let bundleToCheck: String
+        if let autoBundleID {
+            bundleToCheck = autoBundleID
+        } else {
+            bundleToCheck = advanced.customBundleID.isEmpty ? parsed.bundleId : advanced.customBundleID
+        }
         guard let appID,
               appID == teamID + "." + bundleToCheck || appID == teamID + ".*"
         else {
@@ -268,7 +291,9 @@ final class SigningEngine: ObservableObject {
         try fm.copyItem(at: parsed.appBundleURL, to: signedApp)
 
         // 2a. Advanced: rewrite Info.plist (Bundle ID / name / version / plist fields / flags)
-        let effectiveBundleID = advanced.customBundleID.isEmpty ? parsed.bundleId : advanced.customBundleID
+        //     P0-4: automatic Bundle ID (from step 1) wins over the original ID.
+        let effectiveBundleID = autoBundleID
+            ?? (advanced.customBundleID.isEmpty ? parsed.bundleId : advanced.customBundleID)
         let plistURL = signedApp.appendingPathComponent("Info.plist")
         if var plist = try? PropertyListSerialization.propertyList(from: Data(contentsOf: plistURL), options: [], format: nil) as? [String: Any] {
             plist["CFBundleIdentifier"] = effectiveBundleID
@@ -297,11 +322,22 @@ final class SigningEngine: ObservableObject {
             if fm.fileExists(atPath: plugIns.path) { try? fm.removeItem(at: plugIns) }
         }
 
-        // 2b. Entitlements: merge the advanced options; strip get-task-allow for on-device installs
-        let base = request.entitlements.isEmpty
-            ? buildEntitlements(bundleId: effectiveBundleID, teamID: teamID, options: advanced)
-            : request.entitlements
-        let entitlements = base.filter { $0.key != "get-task-allow" }
+        // 2b. Entitlements: merge the advanced options; strip get-task-allow only
+        //     when the user asked for it (P0-3: honor stripDebugEntitlement).
+        let base: [String: Any]
+        if autoBundleID != nil {
+            // P0-4: request.entitlements may have been built for the original
+            // Bundle ID; rebuild them bound to the automatic one (the advanced
+            // option merge — presets, custom JSON — is preserved).
+            base = buildEntitlements(bundleId: effectiveBundleID, teamID: teamID, options: advanced)
+        } else if request.entitlements.isEmpty {
+            base = buildEntitlements(bundleId: effectiveBundleID, teamID: teamID, options: advanced)
+        } else {
+            base = request.entitlements
+        }
+        let entitlements = request.stripDebugEntitlement
+            ? base.filter { $0.key != "get-task-allow" }
+            : base
         let entitlementsURL = writeEntitlements(entitlements, into: signedApp)
 
         let rawProfile = try Data(contentsOf: request.provisioningURL)
