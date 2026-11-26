@@ -168,6 +168,10 @@ final class SigningEngine: ObservableObject {
         let entitlements: [String: Any]
         let p12URL: URL
         let provisioningURL: URL
+        /// Advanced: custom Bundle ID override (empty = keep the IPA's original ID).
+        var bundleIdOverride: String = ""
+        /// Advanced: strip Apple's get-task-allow debug entitlement (default on).
+        var stripDebugEntitlement: Bool = true
     }
 
     struct SignResult {
@@ -203,10 +207,11 @@ final class SigningEngine: ObservableObject {
         let teamID = (profile["TeamIdentifier"] as? [String])?.first
         let appID = (profile["Entitlements"] as? [String: Any])?["application-identifier"] as? String
         guard let teamID else { throw EngineError.provisionMismatch("profile has no TeamIdentifier") }
+        let bundleToCheck = request.bundleIdOverride.isEmpty ? parsed.bundleId : request.bundleIdOverride
         guard let appID,
-              appID == teamID + "." + parsed.bundleId || appID == teamID + ".*"
+              appID == teamID + "." + bundleToCheck || appID == teamID + ".*"
         else {
-            throw EngineError.provisionMismatch("App ID \"\(appID ?? "nil")\" does not cover \(parsed.bundleId)")
+            throw EngineError.provisionMismatch("App ID \"\(appID ?? "nil")\" does not cover \(bundleToCheck)")
         }
         if let exp = profile["ExpirationDate"] as? Date, exp < Date() {
             throw EngineError.provisionMismatch("profile already expired")
@@ -222,9 +227,28 @@ final class SigningEngine: ObservableObject {
         if fm.fileExists(atPath: signedApp.path) { try fm.removeItem(at: signedApp) }
         try fm.copyItem(at: parsed.appBundleURL, to: signedApp)
 
-        let entitlements = request.entitlements.isEmpty
-            ? buildEntitlements(bundleId: parsed.bundleId, teamID: teamID)
+        // 2a. Advanced: custom Bundle ID override (Info.plist rewrite, plist-safe)
+        let effectiveBundleID: String
+        if !request.bundleIdOverride.isEmpty {
+            let plistURL = signedApp.appendingPathComponent("Info.plist")
+            guard var plist = try? PropertyListSerialization.propertyList(from: Data(contentsOf: plistURL), options: [], format: nil) as? [String: Any] else {
+                throw EngineError.invalidIPA("cannot read Info.plist to apply Bundle ID override")
+            }
+            plist["CFBundleIdentifier"] = request.bundleIdOverride
+            let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .binary, options: 0)
+            try data.write(to: plistURL, options: .atomic)
+            effectiveBundleID = request.bundleIdOverride
+        } else {
+            effectiveBundleID = parsed.bundleId
+        }
+
+        let baseEntitlements = request.entitlements.isEmpty
+            ? buildEntitlements(bundleId: effectiveBundleID, teamID: teamID)
             : request.entitlements
+        // 2b. Advanced: strip the debug entitlement before writing
+        let entitlements = request.stripDebugEntitlement
+            ? baseEntitlements.filter { $0.key != "get-task-allow" }
+            : baseEntitlements
         let entitlementsURL = writeEntitlements(entitlements, into: signedApp)
 
         let rawProfile = try Data(contentsOf: request.provisioningURL)
@@ -249,7 +273,7 @@ final class SigningEngine: ObservableObject {
         }
 
         return SignResult(outputPath: outURL,
-                          bundleId: parsed.bundleId,
+                          bundleId: effectiveBundleID,
                           signedAt: Date(),
                           entitlementsURL: entitlementsURL)
     }

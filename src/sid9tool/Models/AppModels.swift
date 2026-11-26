@@ -84,6 +84,38 @@ struct ContainerSettings: Codable, Equatable {
     var localDevVPN: Bool = false
     var tunnelEnabled: Bool = false
     var tunnelEndpoint: String = ""
+    /// Advanced re-sign: custom Bundle ID override ("" = keep original).
+    var bundleIdOverride: String = ""
+    /// Advanced re-sign: strip Apple's get-task-allow debug entitlement.
+    var stripDebugEntitlement: Bool = true
+
+    init() {}
+
+    /// Tolerant decode: missing keys (older persisted data) fall back to defaults.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        jitlessMode = try c.decodeIfPresent(Bool.self, forKey: .jitlessMode) ?? true
+        localDevVPN = try c.decodeIfPresent(Bool.self, forKey: .localDevVPN) ?? false
+        tunnelEnabled = try c.decodeIfPresent(Bool.self, forKey: .tunnelEnabled) ?? false
+        tunnelEndpoint = try c.decodeIfPresent(String.self, forKey: .tunnelEndpoint) ?? ""
+        bundleIdOverride = try c.decodeIfPresent(String.self, forKey: .bundleIdOverride) ?? ""
+        stripDebugEntitlement = try c.decodeIfPresent(Bool.self, forKey: .stripDebugEntitlement) ?? true
+    }
+}
+
+// MARK: - Advanced resign settings
+
+struct ResignSettings: Codable, Equatable {
+    /// Custom Bundle ID override for re-signing (empty = keep IPA's original ID).
+    var bundleIdOverride: String = ""
+    /// Remove Apple's `get-task-allow` entitlement (default: remove).
+    var stripDebugEntitlement: Bool = true
+    /// Strip App Store receipts / metadata before re-signing.
+    var stripReceipt: Bool = true
+    /// Use the JIT-less LocalDevVPN entitlement preset when JIT-less is on.
+    var jitlessEntitlementPreset: Bool = true
+    /// Extra entitlement keys added verbatim (JSON-style "key" list).
+    var extraEntitlementKeys: [String] = []
 }
 
 // MARK: - Storage sections

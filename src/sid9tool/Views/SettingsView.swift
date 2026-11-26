@@ -27,6 +27,7 @@ struct SettingsView: View {
                 pairingSection
                 certificateSection
                 containerSection
+                advancedSignSection
                 vpnSection
                 storageSection
                 languageSection
@@ -152,6 +153,27 @@ struct SettingsView: View {
             Toggle(localization.t("啟用隧道", "Enable tunnel", "启用隧道"), isOn: $appState.container.tunnelEnabled)
         } header: {
             Text(localization.t("容器", "Containers", "容器"))
+        }
+    }
+
+    private var advancedSignSection: some View {
+        Section {
+            TextField(localization.t("自訂 Bundle ID（留空=原樣）",
+                                    "Custom Bundle ID (empty = original)",
+                                    "自定义 Bundle ID（留空=原样）"),
+                      text: $appState.container.bundleIdOverride)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+            Toggle(localization.t("移除 get-task-allow 除錯權限",
+                                 "Strip get-task-allow debug entitlement",
+                                 "移除 get-task-allow 调试权限"),
+                   isOn: $appState.container.stripDebugEntitlement)
+        } header: {
+            Text(localization.t("重簽進階設定", "Advanced re-sign settings", "重签高级设置"))
+        } footer: {
+            Text(localization.t("自訂 Bundle ID 需被 .mobileprovision 的 App ID 涵蓋；自簽名免費帳號建議使用萬用 * App ID。",
+                              "A custom Bundle ID must be covered by the profile's App ID; use a wildcard * App ID for free self-signed profiles.",
+                              "自定义 Bundle ID 需被 .mobileprovision 的 App ID 涵盖；自签名免费账号建议通配 * App ID。"))
         }
     }
 
