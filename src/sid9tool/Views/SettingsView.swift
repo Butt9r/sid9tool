@@ -158,10 +158,11 @@ struct SettingsView: View {
 
     private var advancedSignSection: some View {
         Section {
+            // P0-3: ResignAdvanced.customBundleID is the single source of truth.
             TextField(localization.t("自訂 Bundle ID（留空=原樣）",
                                     "Custom Bundle ID (empty = original)",
                                     "自定义 Bundle ID（留空=原样）"),
-                      text: $appState.container.bundleIdOverride)
+                      text: $appState.advanced.customBundleID)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
             Toggle(localization.t("移除 get-task-allow 除錯權限",

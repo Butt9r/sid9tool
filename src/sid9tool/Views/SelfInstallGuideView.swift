@@ -183,18 +183,16 @@ struct SelfInstallGuideView: View {
                 let scoped = url.startAccessingSecurityScopedResource()
                 let parsed = try SigningEngine.parse(ipaAt: url)
                 if scoped { url.stopAccessingSecurityScopedResource() }
-                // P0-2c: apply the saved advanced install settings; fall back to
-                // container.bundleIdOverride only when customBundleID is not set.
-                var advanced = appState.advanced
-                if advanced.customBundleID.isEmpty {
-                    advanced.customBundleID = appState.container.bundleIdOverride
-                }
+                // P0-3: appState.advanced (incl. customBundleID) is the single
+                // source of truth; stripDebugEntitlement comes from container.
+                let advanced = appState.advanced
                 let request = SigningEngine.SignRequest(
                     parsedIPA: parsed,
                     entitlements: SigningEngine.buildEntitlements(bundleId: parsed.bundleId, teamID: certificate.teamID, options: advanced),
                     p12URL: certDir.appendingPathComponent(p12),
                     provisioningURL: certDir.appendingPathComponent(prov),
-                    advanced: advanced
+                    advanced: advanced,
+                    stripDebugEntitlement: appState.container.stripDebugEntitlement
                 )
                 let result = try SigningEngine.sign(request)
                 let iso = ISO8601DateFormatter()

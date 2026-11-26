@@ -84,7 +84,9 @@ struct ContainerSettings: Codable, Equatable {
     var localDevVPN: Bool = false
     var tunnelEnabled: Bool = false
     var tunnelEndpoint: String = ""
-    /// Advanced re-sign: custom Bundle ID override ("" = keep original).
+    /// LEGACY (P0-3): kept only for backward-compatible decoding of old
+    /// persisted data. Single source of truth is `ResignAdvanced.customBundleID`;
+    /// `AppState.init` migrates a non-empty value there once, then clears this.
     var bundleIdOverride: String = ""
     /// Advanced re-sign: strip Apple's get-task-allow debug entitlement.
     var stripDebugEntitlement: Bool = true
