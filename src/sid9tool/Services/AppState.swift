@@ -9,6 +9,7 @@ struct AppStateSnapshot: Codable, Equatable {
     var container: ContainerSettings
     var feedURL: String
     var onboardingCompleted: Bool
+    var advanced: ResignAdvanced
 }
 
 /// Single source of truth for the app, persisted to the App Sandbox.
@@ -23,6 +24,7 @@ final class AppState: ObservableObject {
         static let container = Self(rawValue: "container")
         static let feedURL = Self(rawValue: "feedURL")
         static let onboarding = Self(rawValue: "onboardingCompleted")
+        static let advanced = Self(rawValue: "advancedResign")
     }
 
     @Published var apps: [SideloadedApp] { didSet { persist() } }
@@ -32,6 +34,7 @@ final class AppState: ObservableObject {
     @Published var container: ContainerSettings { didSet { persist() } }
     @Published var feedURL: String { didSet { persist() } }
     @Published var onboardingCompleted: Bool { didSet { persist() } }
+    @Published var advanced: ResignAdvanced { didSet { persist() } }
 
     static let defaultFeedURL = "https://raw.githubusercontent.com/Butt9r/sid9tool/main/featured.json"
 
@@ -44,6 +47,7 @@ final class AppState: ObservableObject {
         pairing = try? decoder.decode(PairingProfile.self, from: Self.decodeData(Keys.pairing))
         certificate = try? decoder.decode(CertificateProfile.self, from: Self.decodeData(Keys.certificate))
         container = (try? decoder.decode(ContainerSettings.self, from: Self.decodeData(Keys.container))) ?? ContainerSettings()
+        advanced = (try? decoder.decode(ResignAdvanced.self, from: Self.decodeData(Keys.advanced))) ?? ResignAdvanced()
         feedURL = UserDefaults.standard.string(forKey: Keys.feedURL.rawValue) ?? Self.defaultFeedURL
         onboardingCompleted = UserDefaults.standard.bool(forKey: Keys.onboarding.rawValue)
     }
@@ -95,6 +99,7 @@ final class AppState: ObservableObject {
         if let pairing { write(pairing, Keys.pairing) }
         if let certificate { write(certificate, Keys.certificate) }
         write(container, Keys.container)
+        write(advanced, Keys.advanced)
         UserDefaults.standard.set(feedURL, forKey: Keys.feedURL.rawValue)
         UserDefaults.standard.set(onboardingCompleted, forKey: Keys.onboarding.rawValue)
     }

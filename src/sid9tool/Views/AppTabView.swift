@@ -6,6 +6,22 @@ struct AppTabView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var localization: LocalizationService
     @State private var importing = false
+    @State private var showAdvanced = false
+
+    private var advancedSummary: String {
+        let a = appState.advanced
+        var parts: [String] = []
+        if !a.customBundleID.isEmpty { parts.append("Bundle ID") }
+        if a.useAutomaticBundleID { parts.append("Auto ID") }
+        if a.changeAppName { parts.append("Name") }
+        if a.changeAppVersion { parts.append("Version") }
+        if a.enableFileSharing { parts.append("FileSharing") }
+        if a.removeAppExtensions { parts.append("NoPlugIns") }
+        if a.removeDeviceLimitation { parts.append("AllDevices") }
+        if !a.injectDylibs.isEmpty || !a.injectFrameworks.isEmpty { parts.append("Tweak") }
+        if !a.plistFields.isEmpty { parts.append("Plist \(a.plistFields.count)") }
+        return parts.isEmpty ? "" : parts.joined(separator: " · ")
+    }
 
     var body: some View {
         NavigationStack {
@@ -27,9 +43,20 @@ struct AppTabView: View {
                     }
                     .accessibilityLabel(localization.t("匯入 IPA", "Import IPA", "导入 IPA"))
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showAdvanced = true
+                    } label: {
+                        Image(systemName: "slider.horizontal.3")
+                    }
+                    .accessibilityLabel(localization.t("高級安裝設定", "Advanced Install Settings", "高级安装设置"))
+                }
             }
             .sheet(isPresented: $importing) {
                 ImportIPASheet()
+            }
+            .sheet(isPresented: $showAdvanced) {
+                AdvancedResignSheet()
             }
         }
     }
@@ -100,6 +127,7 @@ struct ImportIPASheet: View {
     @State private var showFilePicker = false
     @State private var parsed: SigningEngine.ParsedIPA?
     @State private var errorMessage: String?
+    @State private var showAdvanced = false
 
     private static let ipaTypes: [UTType] = {
         if let ipa = UTType(filenameExtension: "ipa") { return [ipa, .zip] }
@@ -127,6 +155,22 @@ struct ImportIPASheet: View {
                     .padding(12)
                     .background(Color(.secondarySystemGroupedBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                    Button {
+                        showAdvanced = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "slider.horizontal.3")
+                            Text(localization.t("高級安裝設定", "Advanced Install Settings", "高级安装设置"))
+                                .fontWeight(.medium)
+                            Spacer()
+                            Text(localization.t("變更", "Edit", "编辑"))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .font(.subheadline)
+                    .buttonStyle(.plain)
 
                     GlassButton(title: localization.t("加入清單", "Add", "加入清单")) {
                         appState.addApp(name: parsed.displayName,
@@ -166,6 +210,9 @@ struct ImportIPASheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .sheet(isPresented: $showAdvanced) {
+            AdvancedResignSheet()
+        }
     }
 
     private func handleSelection(_ url: URL) {
