@@ -228,7 +228,7 @@ struct HomeView: View {
             }
             GlassButton(title: localization.t("重新簽章", "Re-sign", "重新签章"),
                         systemImage: "arrow.triangle.2.circlepath") {
-                // Re-sign pipeline via SigningEngine (v1 stub)
+                showSelfInstall = true
             }
         }
     }
