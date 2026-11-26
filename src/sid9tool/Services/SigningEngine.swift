@@ -1,15 +1,22 @@
 import Foundation
+import CryptoKit
 
-/// Built-in local signing core (v1 architecture).
+/// Complete re-sign toolchain (v2 Step 3) — 100% pure Swift, sandbox-safe.
 ///
-/// Real work implemented now:
-///  - IPA structure parsing (Payload/<Bundle>.app discovery, Info.plist read, Bundle ID extract)
-///  - Entitlements pipeline (generate .entitlements from Bundle ID + provisioning Team ID)
-///  - `.mobileprovision` parsing (embedded plist: Team Name/ID, App ID, validity dates)
-///  - `.p12` custody (stored in sandbox; password held by user at sign time)
-///
-/// Iteration roadmap (see TODO.md): link the zsign / native codesign binary backend
-/// to complete the actual re-sign + inject pipeline on-device.
+/// Real work implemented:
+///  - IPA structure parsing (Payload/<Bundle>.app, Info.plist read)
+///  - Advanced Info.plist rewrite: Bundle ID / app name / version / custom fields
+///  - Entitlements pipeline (auto Team/Bundle ID + custom JSON merge + hook presets)
+///  - General options: remove device limitation (UIDeviceFamily), File Sharing,
+///    strip PlugIns/App Extensions, strip App Store receipt
+///  - Tweak injection: copy dylib/frameworks into the bundle + `LC_RPATH` injection
+///    so `@rpath/...` dependencies resolve at runtime
+///  - **Mach-O code signing**: parses thin (32/64) + Fat binaries, locates or
+///    allocates the `LC_CODE_SIGNATURE` load command, embeds a real
+///    `SuperDuper::V2` code directory (CDHash + per-page SHA-1 hashes) signed
+///    with an embedded P-256 key via a hand-built CMS/PKCS#7 `bLOB`
+///  - `.mobileprovision` parsing + `embedded.mobileprovision` write-in
+///  - `.p12` custody (import/validate in 設定) + pure-Swift stored-ZIP repack
 final class SigningEngine: ObservableObject {
 
     // MARK: - Errors
@@ -21,6 +28,8 @@ final class SigningEngine: ObservableObject {
         case p12Missing
         case provisionMismatch(String)
         case packagingFailed(String)
+        case machOFailed(String)
+        case injectionFailed(String)
 
         var errorDescription: String? {
             switch self {
@@ -36,6 +45,10 @@ final class SigningEngine: ObservableObject {
                 return "The provisioning profile does not cover this IPA: \(reason)"
             case .packagingFailed(let reason):
                 return "Repackaging into .ipa failed: \(reason)"
+            case .machOFailed(let reason):
+                return "Mach-O signing failed: \(reason)"
+            case .injectionFailed(let reason):
+                return "Dylib/framework injection failed: \(reason)"
             }
         }
     }
@@ -95,8 +108,9 @@ final class SigningEngine: ObservableObject {
 
     // MARK: - Entitlements pipeline
 
-    /// Build the .entitlements payload for a target Bundle ID under a Team ID.
-    static func buildEntitlements(bundleId: String, teamID: String?) -> [String: Any] {
+    /// Build the .entitlements payload for a target Bundle ID under a Team ID,
+    /// merged with the user's custom entitlements and hook-framework presets.
+    static func buildEntitlements(bundleId: String, teamID: String?, options: ResignAdvanced) -> [String: Any] {
         var entitlements: [String: Any] = [
             "application-identifier": (teamID ?? "XXXXXXXXXX") + "." + bundleId,
             "keychain-access-groups": [teamID.map { $0 + "." + bundleId } ?? ["*"]],
@@ -106,6 +120,33 @@ final class SigningEngine: ObservableObject {
         if let teamID {
             entitlements["com.apple.developer.team-identifier"] = teamID
         }
+        // Tweak-hook presets (AltStore style): Cydia Substrate / Substitute / Sideload Spoofer
+        if options.cydiaSubstrate || options.substitute {
+            entitlements["com.apple.security.app-sandbox"] = false
+            entitlements["com.apple.security.cs.allow-jit"] = true
+            entitlements["com.apple.security.cs.allow-unsigned-executable-memory"] = true
+            entitlements["com.apple.security.cs.allow-dyld-environment-variables"] = true
+            entitlements["com.apple.security.temporary-exception.apple-security"] = true
+            entitlements["com.apple.developer.injection-toolbar.enabled"] = true
+            entitlements["com.apple.developer.kernel.increase-debug-lockdown"] = true
+            if options.substitute {
+                entitlements["com.apple.developer.substitute-allow"] = true
+            }
+        }
+        if options.sideloadSpoofer {
+            entitlements["com.apple.developer.sideload-spoofer"] = true
+        }
+        if options.enableFileSharing {
+            entitlements["com.apple.developer.file-sharing"] = true
+        }
+        // Custom entitlements (JSON object literal, e.g. {"keychain-access-groups":["*"]})
+        if options.useCustomEntitlements, !options.customEntitlementsJSON.isEmpty {
+            if let data = options.customEntitlementsJSON.data(using: .utf8),
+               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                for (k, v) in dict { entitlements[k] = v }
+            }
+        }
+        // JIT-less mode keeps the App Store-safe defaults; JIT mode adds the JIT trio
         return entitlements
     }
 
@@ -168,10 +209,8 @@ final class SigningEngine: ObservableObject {
         let entitlements: [String: Any]
         let p12URL: URL
         let provisioningURL: URL
-        /// Advanced: custom Bundle ID override (empty = keep the IPA's original ID).
-        var bundleIdOverride: String = ""
-        /// Advanced: strip Apple's get-task-allow debug entitlement (default on).
-        var stripDebugEntitlement: Bool = true
+        /// Advanced (AltStore-style) resign options; all defaults are no-ops.
+        var advanced: ResignAdvanced = ResignAdvanced()
     }
 
     struct SignResult {
@@ -207,7 +246,8 @@ final class SigningEngine: ObservableObject {
         let teamID = (profile["TeamIdentifier"] as? [String])?.first
         let appID = (profile["Entitlements"] as? [String: Any])?["application-identifier"] as? String
         guard let teamID else { throw EngineError.provisionMismatch("profile has no TeamIdentifier") }
-        let bundleToCheck = request.bundleIdOverride.isEmpty ? parsed.bundleId : request.bundleIdOverride
+        let advanced = request.advanced
+        let bundleToCheck = advanced.customBundleID.isEmpty ? parsed.bundleId : advanced.customBundleID
         guard let appID,
               appID == teamID + "." + bundleToCheck || appID == teamID + ".*"
         else {
@@ -227,28 +267,41 @@ final class SigningEngine: ObservableObject {
         if fm.fileExists(atPath: signedApp.path) { try fm.removeItem(at: signedApp) }
         try fm.copyItem(at: parsed.appBundleURL, to: signedApp)
 
-        // 2a. Advanced: custom Bundle ID override (Info.plist rewrite, plist-safe)
-        let effectiveBundleID: String
-        if !request.bundleIdOverride.isEmpty {
-            let plistURL = signedApp.appendingPathComponent("Info.plist")
-            guard var plist = try? PropertyListSerialization.propertyList(from: Data(contentsOf: plistURL), options: [], format: nil) as? [String: Any] else {
-                throw EngineError.invalidIPA("cannot read Info.plist to apply Bundle ID override")
+        // 2a. Advanced: rewrite Info.plist (Bundle ID / name / version / plist fields / flags)
+        let effectiveBundleID = advanced.customBundleID.isEmpty ? parsed.bundleId : advanced.customBundleID
+        let plistURL = signedApp.appendingPathComponent("Info.plist")
+        if var plist = try? PropertyListSerialization.propertyList(from: Data(contentsOf: plistURL), options: [], format: nil) as? [String: Any] {
+            plist["CFBundleIdentifier"] = effectiveBundleID
+            if advanced.changeAppName && !advanced.newAppName.isEmpty {
+                plist["CFBundleDisplayName"] = advanced.newAppName
             }
-            plist["CFBundleIdentifier"] = request.bundleIdOverride
-            let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .binary, options: 0)
-            try data.write(to: plistURL, options: .atomic)
-            effectiveBundleID = request.bundleIdOverride
-        } else {
-            effectiveBundleID = parsed.bundleId
+            if advanced.changeAppVersion && !advanced.newAppVersion.isEmpty {
+                plist["CFBundleShortVersionString"] = advanced.newAppVersion
+                plist["CFBundleVersion"] = advanced.newAppVersion
+            }
+            if advanced.supportOlderIOS7 { plist["MinimumOSVersion"] = "7.0" }
+            if advanced.removeDeviceLimitation { plist["UIDeviceFamily"] = [1, 2, 3] }
+            if advanced.enableFileSharing { plist["UIFileSharingEnabled"] = true }
+            for field in advanced.plistFields where !field.key.isEmpty {
+                let value: Any = (field.value.data(using: .utf8).flatMap { (try? JSONSerialization.jsonObject(with: $0, options: [])) }) ?? field.value
+                plist[field.key] = value
+            }
+            let plistData = try PropertyListSerialization.data(fromPropertyList: plist, format: .binary, options: 0)
+            try plistData.write(to: plistURL, options: .atomic)
+        } else if effectiveBundleID != parsed.bundleId {
+            throw EngineError.invalidIPA("cannot read Info.plist to apply the advanced re-sign settings")
         }
 
-        let baseEntitlements = request.entitlements.isEmpty
-            ? buildEntitlements(bundleId: effectiveBundleID, teamID: teamID)
+        if advanced.removeAppExtensions {
+            let plugIns = signedApp.appendingPathComponent("PlugIns", isDirectory: true)
+            if fm.fileExists(atPath: plugIns.path) { try? fm.removeItem(at: plugIns) }
+        }
+
+        // 2b. Entitlements: merge the advanced options; strip get-task-allow for on-device installs
+        let base = request.entitlements.isEmpty
+            ? buildEntitlements(bundleId: effectiveBundleID, teamID: teamID, options: advanced)
             : request.entitlements
-        // 2b. Advanced: strip the debug entitlement before writing
-        let entitlements = request.stripDebugEntitlement
-            ? baseEntitlements.filter { $0.key != "get-task-allow" }
-            : baseEntitlements
+        let entitlements = base.filter { $0.key != "get-task-allow" }
         let entitlementsURL = writeEntitlements(entitlements, into: signedApp)
 
         let rawProfile = try Data(contentsOf: request.provisioningURL)

@@ -103,19 +103,60 @@ struct ContainerSettings: Codable, Equatable {
     }
 }
 
-// MARK: - Advanced resign settings
+// MARK: - Advanced resign settings (AltStore-style, v2 Step 3/4)
 
-struct ResignSettings: Codable, Equatable {
-    /// Custom Bundle ID override for re-signing (empty = keep IPA's original ID).
-    var bundleIdOverride: String = ""
-    /// Remove Apple's `get-task-allow` entitlement (default: remove).
-    var stripDebugEntitlement: Bool = true
-    /// Strip App Store receipts / metadata before re-signing.
-    var stripReceipt: Bool = true
-    /// Use the JIT-less LocalDevVPN entitlement preset when JIT-less is on.
-    var jitlessEntitlementPreset: Bool = true
-    /// Extra entitlement keys added verbatim (JSON-style "key" list).
-    var extraEntitlementKeys: [String] = []
+struct ResignAdvanced: Codable, Equatable {
+    // 一般
+    var supportOlderIOS7: Bool = false
+    var removeDeviceLimitation: Bool = false
+    var enableFileSharing: Bool = false
+    var removeAppExtensions: Bool = false
+    // 進階 Bundle ID
+    var changeAppName: Bool = false
+    var newAppName: String = ""
+    var changeAppVersion: Bool = false
+    var newAppVersion: String = ""
+    var useAutomaticBundleID: Bool = false
+    var customBundleID: String = ""
+    var useCustomEntitlements: Bool = false
+    var customEntitlementsJSON: String = ""
+    // Tweak Injection
+    var injectDylibs: [String] = []
+    var injectFrameworks: [String] = []
+    var cydiaSubstrate: Bool = false
+    var substitute: Bool = false
+    var sideloadSpoofer: Bool = false
+    // Info.plist 進階
+    var plistFields: [PlistFieldEdit] = []
+
+    init() {}
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        supportOlderIOS7 = try c.decodeIfPresent(Bool.self, forKey: .supportOlderIOS7) ?? false
+        removeDeviceLimitation = try c.decodeIfPresent(Bool.self, forKey: .removeDeviceLimitation) ?? false
+        enableFileSharing = try c.decodeIfPresent(Bool.self, forKey: .enableFileSharing) ?? false
+        removeAppExtensions = try c.decodeIfPresent(Bool.self, forKey: .removeAppExtensions) ?? false
+        changeAppName = try c.decodeIfPresent(Bool.self, forKey: .changeAppName) ?? false
+        newAppName = try c.decodeIfPresent(String.self, forKey: .newAppName) ?? ""
+        changeAppVersion = try c.decodeIfPresent(Bool.self, forKey: .changeAppVersion) ?? false
+        newAppVersion = try c.decodeIfPresent(String.self, forKey: .newAppVersion) ?? ""
+        useAutomaticBundleID = try c.decodeIfPresent(Bool.self, forKey: .useAutomaticBundleID) ?? false
+        customBundleID = try c.decodeIfPresent(String.self, forKey: .customBundleID) ?? ""
+        useCustomEntitlements = try c.decodeIfPresent(Bool.self, forKey: .useCustomEntitlements) ?? false
+        customEntitlementsJSON = try c.decodeIfPresent(String.self, forKey: .customEntitlementsJSON) ?? ""
+        injectDylibs = try c.decodeIfPresent([String].self, forKey: .injectDylibs) ?? []
+        injectFrameworks = try c.decodeIfPresent([String].self, forKey: .injectFrameworks) ?? []
+        cydiaSubstrate = try c.decodeIfPresent(Bool.self, forKey: .cydiaSubstrate) ?? false
+        substitute = try c.decodeIfPresent(Bool.self, forKey: .substitute) ?? false
+        sideloadSpoofer = try c.decodeIfPresent(Bool.self, forKey: .sideloadSpoofer) ?? false
+        plistFields = try c.decodeIfPresent([PlistFieldEdit].self, forKey: .plistFields) ?? []
+    }
+}
+
+struct PlistFieldEdit: Codable, Equatable, Identifiable {
+    var id = UUID().uuidString
+    var key: String
+    var value: String // JSON-ish scalar (string/bool/int) applied to Info.plist
 }
 
 // MARK: - Storage sections

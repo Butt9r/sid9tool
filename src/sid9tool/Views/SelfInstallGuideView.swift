@@ -183,13 +183,14 @@ struct SelfInstallGuideView: View {
                 let scoped = url.startAccessingSecurityScopedResource()
                 let parsed = try SigningEngine.parse(ipaAt: url)
                 if scoped { url.stopAccessingSecurityScopedResource() }
+                var advanced = ResignAdvanced()
+                advanced.customBundleID = appState.container.bundleIdOverride
                 let request = SigningEngine.SignRequest(
                     parsedIPA: parsed,
-                    entitlements: SigningEngine.buildEntitlements(bundleId: parsed.bundleId, teamID: certificate.teamID),
+                    entitlements: SigningEngine.buildEntitlements(bundleId: parsed.bundleId, teamID: certificate.teamID, options: advanced),
                     p12URL: certDir.appendingPathComponent(p12),
                     provisioningURL: certDir.appendingPathComponent(prov),
-                    bundleIdOverride: appState.container.bundleIdOverride,
-                    stripDebugEntitlement: appState.container.stripDebugEntitlement
+                    advanced: advanced
                 )
                 let result = try SigningEngine.sign(request)
                 let iso = ISO8601DateFormatter()
