@@ -265,8 +265,8 @@ final class SigningEngine: ObservableObject {
         let isDir: Bool
         do { isDir = (try fm.contentsOfDirectory(atPath: root.path)).isEmpty ? false : true } catch { isDir = false }
         guard isDir else { throw EngineError.packagingFailed("zip source is not a directory") }
-        let enum = fm.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [])
-        for case let fileURL as URL in enum {
+        let enumeration = fm.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [])
+        for case let fileURL as URL in enumeration {
             let values = try fileURL.resourceValues(forKeys: [.isDirectoryKey])
             if values.isDirectory == true { continue }
             files.append(fileURL)
