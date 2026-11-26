@@ -63,14 +63,27 @@ struct AppTabView: View {
 
     private var slotHeader: some View {
         GlassCard {
-            HStack {
-                Label(localization.t(
-                    "已用 \(appState.slot.occupiedSlots)/\(appState.slot.totalSlots) slot",
-                    "Slots \(appState.slot.occupiedSlots)/\(appState.slot.totalSlots)",
-                    "已用 \(appState.slot.occupiedSlots)/\(appState.slot.totalSlots) slot"
-                ), systemImage: "cube.box.fill")
-                    .font(.subheadline.weight(.medium))
-                Spacer()
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Label(localization.t(
+                        "已用 \(appState.slot.occupiedSlots)/\(appState.slot.totalSlots) slot",
+                        "Slots \(appState.slot.occupiedSlots)/\(appState.slot.totalSlots)",
+                        "已用 \(appState.slot.occupiedSlots)/\(appState.slot.totalSlots) slot"
+                    ), systemImage: "cube.box.fill")
+                        .font(.subheadline.weight(.medium))
+                    Spacer()
+                }
+                if !advancedSummary.isEmpty {
+                    HStack(spacing: 6) {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(advancedSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
             }
         }
     }

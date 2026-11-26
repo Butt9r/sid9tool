@@ -183,8 +183,12 @@ struct SelfInstallGuideView: View {
                 let scoped = url.startAccessingSecurityScopedResource()
                 let parsed = try SigningEngine.parse(ipaAt: url)
                 if scoped { url.stopAccessingSecurityScopedResource() }
-                var advanced = ResignAdvanced()
-                advanced.customBundleID = appState.container.bundleIdOverride
+                // P0-2c: apply the saved advanced install settings; fall back to
+                // container.bundleIdOverride only when customBundleID is not set.
+                var advanced = appState.advanced
+                if advanced.customBundleID.isEmpty {
+                    advanced.customBundleID = appState.container.bundleIdOverride
+                }
                 let request = SigningEngine.SignRequest(
                     parsedIPA: parsed,
                     entitlements: SigningEngine.buildEntitlements(bundleId: parsed.bundleId, teamID: certificate.teamID, options: advanced),

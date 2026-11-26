@@ -36,6 +36,7 @@ struct AdvancedResignSheet: View {
                 }
             }
         }
+        .onAppear { model = appState.advanced }
         .presentationDetents([.large])
         .fileImporter(isPresented: $showEntitlementsPicker,
                       allowedContentTypes: [UTType.json],
