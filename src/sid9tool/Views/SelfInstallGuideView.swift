@@ -23,7 +23,7 @@ struct SelfInstallGuideView: View {
     private static let pairingTypes: [UTType] = {
         var types: [UTType] = []
         if let t = UTType(filenameExtension: "mobiledevicepairing") { types.append(t) }
-        if let t = UTType.json { types.append(t) }
+        types.append(UTType.json)
         if types.isEmpty { types = [.item] }
         return types
     }()
