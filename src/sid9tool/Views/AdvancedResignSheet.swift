@@ -49,14 +49,14 @@ struct AdvancedResignSheet: View {
             }
         }
         .fileImporter(isPresented: $showDylibPicker,
-                      allowedContentTypes: [UTType(filenameExtension: "dylib"), .data],
+                      allowedContentTypes: [UTType(filenameExtension: "dylib") ?? .data, .data],
                       allowsMultipleSelection: true) { result in
             handleImport(result) { _, name in
                 if !model.injectDylibs.contains(name) { model.injectDylibs.append(name) }
             }
         }
         .fileImporter(isPresented: $showFrameworkPicker,
-                      allowedContentTypes: [UTType(filenameExtension: "framework"), .data],
+                      allowedContentTypes: [UTType(filenameExtension: "framework") ?? .data, .data],
                       allowsMultipleSelection: true) { result in
             handleImport(result) { _, name in
                 if !model.injectFrameworks.contains(name) { model.injectFrameworks.append(name) }
@@ -212,10 +212,10 @@ struct AdvancedResignSheet: View {
     }
 
     private func handleImport(_ result: Result<[URL], Error>,
-                              transform: (String) -> Void) {
+                              transform: (URL, String) -> Void) {
         switch result {
         case .success(let urls):
-            for url in urls where url.isFileURL { transform(url.lastPathComponent) }
+            for url in urls where url.isFileURL { transform(url, url.lastPathComponent) }
         case .failure:
             break
         }
