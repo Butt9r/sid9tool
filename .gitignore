@@ -28,6 +28,7 @@ Packages/
 # Misc
 *.log
 .env
+gh.cmd
 
 # Local helper tools (never commit)
 tools/
