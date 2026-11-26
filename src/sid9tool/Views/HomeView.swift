@@ -129,8 +129,8 @@ struct HomeView: View {
                                ? localization.t("VPN Tunnel 已連線", "VPN tunnel up", "VPN Tunnel 已连接")
                                : localization.t("VPN Tunnel 未偵測到", "No VPN tunnel detected", "未检测到 VPN Tunnel"),
                                isPositive: status.vpnConnected)
-                    if let endpoint = appState.container.tunnelEndpoint, !endpoint.isEmpty {
-                        Text(endpoint)
+                    if !appState.container.tunnelEndpoint.isEmpty {
+                        Text(appState.container.tunnelEndpoint)
                             .font(.caption2)
                             .monospaced()
                             .foregroundStyle(.secondary)

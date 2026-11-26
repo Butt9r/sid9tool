@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Guided, PC-free sid9tool self-installation flow (references FrizzleM/SideInstaller).
 ///
@@ -17,6 +18,28 @@ struct SelfInstallGuideView: View {
     @State private var certImporter = false
     @State private var ipaImporter = false
     @State private var message: String?
+
+    /// Allowed UTTypes per picker step (iOS 16.0-compatible classic API).
+    private static let pairingTypes: [UTType] = {
+        var types: [UTType] = []
+        if let t = UTType(filenameExtension: "mobiledevicepairing") { types.append(t) }
+        if let t = UTType.json { types.append(t) }
+        if types.isEmpty { types = [.item] }
+        return types
+    }()
+    private static let certTypes: [UTType] = {
+        var types: [UTType] = []
+        if let t = UTType(filenameExtension: "p12") { types.append(t) }
+        if let t = UTType(filenameExtension: "mobileprovision") { types.append(t) }
+        if types.isEmpty { types = [.item] }
+        return types
+    }()
+    private static let ipaTypes: [UTType] = {
+        var types: [UTType] = []
+        if let t = UTType(filenameExtension: "ipa") { types.append(t) }
+        if types.isEmpty { types = [.zip] }
+        return types
+    }()
 
     var body: some View {
         NavigationStack {
@@ -59,17 +82,35 @@ struct SelfInstallGuideView: View {
                     Button(localization.t("完成", "Done", "完成")) { dismiss() }
                 }
             }
-            .fileImporter(isPresented: $pairingImporter, allowsMultipleSelection: false) { result in
-                guard case .success(let url) = result else { return }
-                handlePairing(url)
+            .fileImporter(isPresented: $pairingImporter,
+                          allowedContentTypes: Self.pairingTypes,
+                          allowsMultipleSelection: false) { result in
+                switch result {
+                case .failure(let error):
+                    message = error.localizedDescription
+                case .success(let urls):
+                    if let url = urls.first { handlePairing(url) }
+                }
             }
-            .fileImporter(isPresented: $certImporter, allowsMultipleSelection: true) { result in
-                guard case .success(let urls) = result else { return }
-                handleCertificates(urls)
+            .fileImporter(isPresented: $certImporter,
+                          allowedContentTypes: Self.certTypes,
+                          allowsMultipleSelection: true) { result in
+                switch result {
+                case .failure(let error):
+                    message = error.localizedDescription
+                case .success(let urls):
+                    handleCertificates(urls)
+                }
             }
-            .fileImporter(isPresented: $ipaImporter, allowsMultipleSelection: false) { result in
-                guard case .success(let url) = result else { return }
-                handleSelfIPA(url)
+            .fileImporter(isPresented: $ipaImporter,
+                          allowedContentTypes: Self.ipaTypes,
+                          allowsMultipleSelection: false) { result in
+                switch result {
+                case .failure(let error):
+                    message = error.localizedDescription
+                case .success(let urls):
+                    if let url = urls.first { handleSelfIPA(url) }
+                }
             }
         }
     }
