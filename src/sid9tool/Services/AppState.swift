@@ -48,16 +48,17 @@ final class AppState: ObservableObject {
         certificate = try? decoder.decode(CertificateProfile.self, from: Self.decodeData(Keys.certificate))
         container = (try? decoder.decode(ContainerSettings.self, from: Self.decodeData(Keys.container))) ?? ContainerSettings()
         advanced = (try? decoder.decode(ResignAdvanced.self, from: Self.decodeData(Keys.advanced))) ?? ResignAdvanced()
+        feedURL = UserDefaults.standard.string(forKey: Keys.feedURL.rawValue) ?? Self.defaultFeedURL
+        onboardingCompleted = UserDefaults.standard.bool(forKey: Keys.onboarding.rawValue)
         // P0-3 migration (one-time, idempotent): the custom Bundle ID used to
         // live in container.bundleIdOverride; ResignAdvanced.customBundleID is
         // now the single source of truth. Move legacy values, then clear the
-        // compat field so it is decode-only from now on.
+        // compat field so it is decode-only from now on. Runs after every stored
+        // property is initialized so `self` is fully formed.
         if !container.bundleIdOverride.isEmpty && advanced.customBundleID.isEmpty {
             advanced.customBundleID = container.bundleIdOverride
         }
         container.bundleIdOverride = ""
-        feedURL = UserDefaults.standard.string(forKey: Keys.feedURL.rawValue) ?? Self.defaultFeedURL
-        onboardingCompleted = UserDefaults.standard.bool(forKey: Keys.onboarding.rawValue)
     }
 
     // MARK: - App list operations
