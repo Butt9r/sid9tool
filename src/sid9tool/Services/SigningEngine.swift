@@ -265,7 +265,9 @@ final class SigningEngine: ObservableObject {
         let isDir: Bool
         do { isDir = (try fm.contentsOfDirectory(atPath: root.path)).isEmpty ? false : true } catch { isDir = false }
         guard isDir else { throw EngineError.packagingFailed("zip source is not a directory") }
-        let enumeration = fm.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [])
+        guard let enumeration = fm.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey], options: []) else {
+            throw EngineError.packagingFailed("cannot enumerate zip source directory")
+        }
         for case let fileURL as URL in enumeration {
             let values = try fileURL.resourceValues(forKeys: [.isDirectoryKey])
             if values.isDirectory == true { continue }
@@ -274,7 +276,7 @@ final class SigningEngine: ObservableObject {
         files.sort { $0.path < $1.path }
 
         let now = Date()
-        let d = (now.timeIntervalSince1970) as UInt32
+        let d = UInt32(now.timeIntervalSince1970)
         let msSinceMidnight = UInt16(((d % 86400) * 1000 / 86) % 65536) // seconds->1/2s units approx (pre-wrap to avoid UInt16 trap)
         let daysSinceEpoch = UInt16(d / 86400 % 16384)
         let ms2 = UInt16((msSinceMidnight / 20) % 20) // 1/20s -> 1/100s
