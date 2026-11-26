@@ -34,6 +34,12 @@ struct HomeView: View {
         if appState.certificate == nil { return "未导入" }
         return appState.certificate?.isExpired == true ? "过期" : "有效"
     }
+    /// Pairing 狀態文字（供卡片用）。
+    private var pairingStatus: String { appState.pairing == nil ? "未匯入" : "已就緒" }
+    private var pairingStatusEN: String { appState.pairing == nil ? "missing" : "ready" }
+    private var pairingStatusHans: String { appState.pairing == nil ? "未导入" : "已就绪" }
+    /// 憑證到期天數。
+    private var certDays: Int { appState.certificate?.daysUntilExpiry ?? 0 }
 
     var body: some View {
         NavigationStack {
@@ -67,9 +73,9 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 10) {
                 SectionHeader(title: "Pairing", systemImage: "link")
                 HStack(spacing: 8) {
-                    StatusChip(title: localization.t("Pairing \\(appState.pairing == nil ? "未匯入" : "已就緒")",
-                               "Pairing \\(appState.pairing == nil ? "missing" : "ready")",
-                               "Pairing \\(appState.pairing == nil ? "未导入" : "已就绪")"),
+                    StatusChip(title: localization.t("Pairing \(appState.pairing == nil ? "未匯入" : "已就緒")",
+                               "Pairing \(appState.pairing == nil ? "missing" : "ready")",
+                               "Pairing \(appState.pairing == nil ? "未导入" : "已就绪")"),
                                isPositive: appState.pairing != nil)
                     if let udid = appState.pairing?.deviceUDID {
                         Text(udid.prefix(12))
@@ -94,12 +100,12 @@ struct HomeView: View {
                 SectionHeader(title: localization.t("Apple ID + 憑證", "Apple ID + Certificate", "Apple ID + 证书"),
                               systemImage: "person.crop.circle.badge.checkmark")
                 HStack(spacing: 8) {
-                    StatusChip(title: localization.t("憑證 \\(certTitle)",
-                               "Cert \\(certTitleEN)",
-                               "证书 \\(certTitleHans)"),
+                    StatusChip(title: localization.t("憑證 \(certTitle)",
+                               "Cert \(certTitleEN)",
+                               "证书 \(certTitleHans)"),
                                isPositive: appState.certificate != nil && appState.certificate?.isExpired == false)
                     if let days = appState.certificate?.daysUntilExpiry {
-                        Text(localization.t("到期 \\(days) 天", "\\(days)d to expire", "到期 \\(days) 天"))
+                        Text(localization.t("到期 \(days) 天", "\(days)d to expire", "到期 \(days) 天"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
