@@ -1,7 +1,7 @@
 //
-// selfcheck.swift — CI self-check entry point (P1-3 / P1-4).
+// main.swift — CI self-check entry point (P1-3 / P1-4).
 // Run on the CI macOS runner:
-//   swift selfcheck.swift src/sid9tool/Services/MachO.swift src/sid9tool/Services/CodeSigner.swift
+//   swiftc -o selfcheck main.swift src/sid9tool/Services/MachO.swift src/sid9tool/Services/CodeSigner.swift && ./selfcheck
 // Exits non-zero if any check fails.
 //
 import Foundation

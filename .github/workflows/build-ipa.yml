@@ -45,7 +45,7 @@ jobs:
 
       - name: Run self-check (P1-3 / P1-4)
         run: |
-          swiftc -o selfcheck selfcheck.swift src/sid9tool/Services/MachO.swift src/sid9tool/Services/CodeSigner.swift
+          swiftc -o selfcheck main.swift src/sid9tool/Services/MachO.swift src/sid9tool/Services/CodeSigner.swift
           ./selfcheck
 
       - name: Package unsigned IPA
