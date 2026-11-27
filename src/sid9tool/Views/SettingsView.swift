@@ -80,9 +80,20 @@ struct SettingsView: View {
                 P12PasswordSheet(onCancel: { pendingP12 = nil }) { password in
                     pendingP12 = nil
                     do {
-                        let (certName, _, _) = try CertificateService().importP12(at: url, password: password)
+                        let (certName, certDER, _) = try CertificateService().importP12(at: url, password: password)
                         appState.certificate?.certCommonName = certName
                         appState.certificate?.p12ImportedAt = .now
+                        appState.certificate?.p12CertDER = certDER
+                        // P1-2: warn if the .p12 cert is not in the profile's DeveloperCertificates.
+                        if let der = certDER, let devCerts = appState.certificate?.developerCertificates, !devCerts.isEmpty {
+                            if !CertificateService.verifyP12InProfile(certDER: der, developerCertificates: devCerts) {
+                                certNote = localization.t(
+                                    "\u{26A0}\u{FE0F} .p12 \u{5132}\u{8B49}\u{8207} .mobileprovision \u{4E0D}\u{76F8}\u{7B26}",
+                                    "\u{26A0}\u{FE0F} .p12 certificate does not match .mobileprovision (not in DeveloperCertificates)",
+                                    "\u{26A0}\u{FE0F} .p12 \u{8BC1}\u{4E66}\u{4E0E} .mobileprovision \u{4E0D}\u{5339}\u{914D}")
+                                return
+                            }
+                        }
                         certNote = localization.t("已匯入 .p12（\(certName)）",
                                                   ".p12 imported (\(certName))",
                                                   "已导入 .p12（\(certName)）")

@@ -71,6 +71,8 @@ struct CertificateProfile: Codable, Equatable {
     var developerCertificates: [Data]?
     /// P1-2: raw `ProvisionedDevices` entries (UDIDs or device IDs); nil = all-devices profile.
     var provisionedDevices: [String]?
+    /// P1-2: raw DER data of the .p12 signing certificate (for profile matching).
+    var p12CertDER: Data? = nil
 
     var isExpired: Bool {
         guard let expirationDate else { return false }

@@ -209,6 +209,11 @@ final class SigningEngine: ObservableObject {
         let entitlements: [String: Any]
         let p12URL: URL
         let provisioningURL: URL
+        /// P1-2: raw DER of the .p12 signing cert (for profile match verification).
+        var p12CertDER: Data?
+        /// P1-2: UDID from an imported pairing file; when set, the profile's
+        /// `ProvisionedDevices` (if any) must contain it.
+        var pairingUDID: String?
         /// Advanced (AltStore-style) resign options; all defaults are no-ops.
         var advanced: ResignAdvanced = ResignAdvanced()
         /// P0-3: when true, the Apple `get-task-allow` debug entitlement is
@@ -249,6 +254,20 @@ final class SigningEngine: ObservableObject {
         let teamID = (profile["TeamIdentifier"] as? [String])?.first
         let appID = (profile["Entitlements"] as? [String: Any])?["application-identifier"] as? String
         guard let teamID else { throw EngineError.provisionMismatch("profile has no TeamIdentifier") }
+        // P1-2: verify the .p12 cert appears in the profile's DeveloperCertificates.
+        if let certDER = request.p12CertDER {
+            let devCerts = (profile["DeveloperCertificates"] as? [Data]) ?? []
+            guard !devCerts.isEmpty, devCerts.contains(certDER) else {
+                throw EngineError.provisionMismatch("the .p12 certificate is not in the profile's DeveloperCertificates")
+            }
+        }
+        // P1-2: when a pairing file was imported, the profile's ProvisionedDevices
+        // (explicit profiles only) must contain the device UDID.
+        if let udid = request.pairingUDID {
+            if let devices = profile["ProvisionedDevices"] as? [String], !devices.isEmpty, !devices.contains(udid) {
+                throw EngineError.provisionMismatch("device UDID \(udid.prefix(12))… is not in the profile's ProvisionedDevices")
+            }
+        }
         let advanced = request.advanced
         // P0-4: advanced Bundle ID resolution (custom wins over automatic,
         // automatic wins over the original). The profile must cover the result.

@@ -10,6 +10,12 @@ final class CertificateService {
         return u
     }
 
+    /// P1-2: verify the .p12 signing cert appears in the profile's DeveloperCertificates.
+    /// Returns true if the cert DER matches any entry; false otherwise.
+    static func verifyP12InProfile(certDER: Data, developerCertificates: [Data]) -> Bool {
+        developerCertificates.contains { $0 == certDER }
+    }
+
     /// Store a .p12 or .mobileprovision file; when both are present, build & return the profile.
     @MainActor
     func importFile(_ sourceURL: URL) -> CertificateProfile? {

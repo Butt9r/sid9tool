@@ -214,6 +214,8 @@ struct SelfInstallGuideView: View {
                     entitlements: SigningEngine.buildEntitlements(bundleId: parsed.bundleId, teamID: certificate.teamID, options: advanced),
                     p12URL: certDir.appendingPathComponent(p12),
                     provisioningURL: certDir.appendingPathComponent(prov),
+                    p12CertDER: certificate.p12CertDER,
+                    pairingUDID: appState.pairing?.deviceUDID,
                     advanced: advanced,
                     stripDebugEntitlement: appState.container.stripDebugEntitlement
                 )
