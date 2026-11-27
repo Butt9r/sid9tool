@@ -100,11 +100,10 @@ final class CertificateService {
         // are all absent from the iOS SDK (see TODO.md 已試過 list).
         var certData: Data?
         var certName = ""
-        if let raw = SecCertificateCopyData(cert) {
-            certData = raw
-            certName = Self.parseCommonName(der: raw)
-                ?? raw.sha256Fingerprint16()
-        }
+        let raw = SecCertificateCopyData(cert) as Data
+        certData = raw
+        certName = Self.parseCommonName(der: raw)
+            ?? raw.sha256Fingerprint16()
         return (certName, certData, identity)
     }
 
