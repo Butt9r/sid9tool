@@ -10,6 +10,8 @@ struct SettingsView: View {
     @State private var showP12Picker = false
     @State private var showProvisionPicker = false
     @State private var certNote: String?
+    @State private var vpnNIC = false
+    @State private var endpointReachable = false
 
     private static let pairingTypes: [UTType] = {
         var types: [UTType] = []
@@ -185,15 +187,21 @@ struct SettingsView: View {
                 .textInputAutocapitalization(.never)
             Button {
                 Task {
-                    let ok = await TunnelService.probe(endpoint: appState.container.tunnelEndpoint)
-                    appState.container.tunnelEnabled = ok
+                    let endpoint = appState.container.tunnelEndpoint
+                    vpnNIC = TunnelService.currentStatus(endpoint: endpoint).vpnConnected
+                    endpointReachable = await TunnelService.probe(endpoint: endpoint)
                 }
             } label: {
                 Label(localization.t("偵測 VPN", "Detect VPN", "检测 VPN"), systemImage: "antenna.radiowaves.left.and.right")
             }
-            LabeledContent(localization.t("隧道狀態", "Tunnel", "隧道状态"), value: appState.container.tunnelEnabled
-                           ? localization.t("已連線", "connected", "已连接")
-                           : localization.t("未偵測到", "not detected", "未检测到"))
+            LabeledContent(localization.t("VPN 網卡偵測", "VPN NIC", "VPN 网卡"),
+                           value: vpnNIC
+                                ? localization.t("已偵測到", "detected", "已检测到")
+                                : localization.t("未偵測到", "not detected", "未检测到"))
+            LabeledContent(localization.t("Endpoint 可達", "Endpoint reachable", "Endpoint 可达"),
+                           value: endpointReachable
+                                ? localization.t("可達", "reachable", "可达")
+                                : localization.t("不可達", "unreachable", "不可达"))
         } header: {
             Text("VPN / Tunnel")
         }

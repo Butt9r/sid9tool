@@ -45,7 +45,7 @@ final class TunnelService {
                     request.timeoutInterval = 2
                     let (data, response) = try await URLSession.shared.data(for: request)
                     _ = data
-                    return (response as? HTTPURLResponse)?.statusCode ?? 0 < 100
+                    return (response as? HTTPURLResponse) != nil
                 } catch {
                     return false
                 }
