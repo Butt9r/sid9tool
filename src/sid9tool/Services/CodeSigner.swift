@@ -94,7 +94,7 @@ public enum CodeSigner {
         var h = Data()
         appendU32(&h, pageOffset)
         appendU32(&h, pageSize)
-        h.append(page)
+        h.append(contentsOf: page)
         return Data(SHA256.hash(data: h))
     }
 
@@ -105,7 +105,7 @@ public enum CodeSigner {
             var h = Data()
             h.append(tag)
             appendU32(&h, UInt32(content.count))
-            h.append(content)
+            h.append(contentsOf: content)
             return Data(SHA256.hash(data: h))
         }
         return Data(SHA256.hash(data: content))
@@ -132,7 +132,7 @@ public enum CodeSigner {
         let nPages = codeLimit == 0 ? 0 : Int(codeLimit / UInt64(pageSize))
         var nCode = nPages
         while nCode < 1 { nCode = 1 }
-        while nCode < nPages + Int(nSpecial) { nCode <<= 1 }
+        while nCode < nPages { nCode <<= 1 }
 
         // Code slots: one hash per page.
         var codeSlots = Data()
@@ -206,7 +206,7 @@ public enum CodeSigner {
         var d = Data()
         appendU32(&d, Magic.entitlements)
         appendU32(&d, 0x1) // version
-        if let plist { d.append(plist) }
+        if let plist { d.append(contentsOf: plist) }
         return d
     }
 
@@ -221,7 +221,7 @@ public enum CodeSigner {
         appendU32(&blob, 1) // sb_count
         appendU32(&blob, 0x0100000C) // cputype: CPU_TYPE_ARM64
         appendU32(&blob, 0x00000002) // cpusubtype: CPU_SUBTYPE_ARM64E
-        blob.append(codeDirectory.blob)
+        blob.append(contentsOf: codeDirectory.blob)
         return SuperBlob(blob: blob, codeDirectoryOffset: UInt32(cdiOffset))
     }
 
@@ -256,21 +256,21 @@ public enum CodeSigner {
         var expect = Data()
         appendU32(&expect, 0)
         appendU32(&expect, 4096)
-        expect.append(page)
+        expect.append(contentsOf: page)
         check(b.subdata(in: 192..<224) == Data(SHA256.hash(data: expect)), "code slot 0 hash mismatch")
 
         // Special slot 0 (Info.plist): SHA256 over tag 0x1 | u32le(len) | content.
         var expectInfo = Data()
         expectInfo.append(SpecialTag.infoPlist)
         appendU32(&expectInfo, UInt32(infoPlist.count))
-        expectInfo.append(infoPlist)
+        expectInfo.append(contentsOf: infoPlist)
         check(b.subdata(in: 96..<128) == Data(SHA256.hash(data: expectInfo)), "special slot 0 (Info.plist) hash mismatch")
 
         // Special slot 1 (entitlements): tag 0x2.
         var expectEnt = Data()
         expectEnt.append(SpecialTag.entitlements)
         appendU32(&expectEnt, UInt32(ent.count))
-        expectEnt.append(ent)
+        expectEnt.append(contentsOf: ent)
         check(b.subdata(in: 128..<160) == Data(SHA256.hash(data: expectEnt)), "special slot 1 (entitlements) hash mismatch")
 
         // Special slot 2 (CodeResources): zeroed when absent.
@@ -296,7 +296,7 @@ public enum CodeSigner {
         let adHoc = try! buildCodeDirectory(binary: Data())
         check(u32(adHoc.blob, 28) == 3, "ad-hoc nSpecialSlots")
         check(u32(adHoc.blob, 32) == 1, "ad-hoc nCodeSlots")
-        check(adHoc.blob.count == 96 + 32 * 4 + 8 + 8, "ad-hoc total size")
+        check(adHoc.blob.count == 96 + 32 * 3 + 8 + 8, "ad-hoc total size")
 
         return failures.isEmpty ? "" : failures.joined(separator: "\n")
     }

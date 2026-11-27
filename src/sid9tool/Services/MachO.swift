@@ -308,12 +308,12 @@ enum MachO {
         w32(2 /*MH_EXECUTE*/); w32(2 /*ncmds*/); w32(88 /*sizeofcmds*/); w32(0 /*reserved*/); w32(0 /*flags*/)
         // LC_SEGMENT_64 (72 bytes): cmd,cmdsize,segname[16],vmaddr,vmsize,fileoff,filesize,maxprot,initprot,nsects,flags
         w32(MachOLC.segment64); w32(72)
-        d.append(Array("__TEXT".utf8)); d.append(Data(count: 16 - 6)) // segname[16]
+        d.append(contentsOf: "__TEXT".utf8); d.append(contentsOf: Data(count: 16 - 6)) // segname[16]
         w64(0x100000000); w64(0x1000); w64(0); w64(0x1000); w32(7); w32(5); w32(0); w32(0)
         // LC_CODE_SIGNATURE (16 bytes): cmd,cmdsize,dataoff,datasize
         w32(MachOLC.codeSignature); w32(16); w32(0x2000); w32(0x100)
         // pad to 0x2100
-        d.append(Data(count: 0x2100 - d.count))
+        d.append(contentsOf: Data(count: 0x2100 - d.count))
         do {
             let p = try parse(d)
             if !p.header.isArm64e { failures.append("arch not arm64e") }
@@ -332,7 +332,7 @@ enum MachO {
         func fw32s(_ v: Int32) { withUnsafeBytes(of: v) { fat.append(contentsOf: $0) } }
         fw32(MachOMagic.fatMagic); fw32(1)
         fw32s(MachOCPU.arm64); fw32s(MachOCPU.subTypeArm64E); fw32(8); fw32(UInt32(d.count)); fw32(4)
-        fat.append(d)
+        fat.append(contentsOf: d)
         do {
             let p = try parse(fat)
             if p.loadCommands.count != 2 { failures.append("fat: expected 2 LC, got \(p.loadCommands.count)") }
