@@ -1,95 +1,81 @@
-# sid9tool
+<div align="center">
+  <img src="icon_round_corner.png" alt="Logo" width="200" />
+  <h1>sid9tool</h1>
+  <p>The easiest PC-free IPA sideloading and management tool</p>
+  <a href="README.md">繁體中文</a>｜<a href="README.zh-Hans.md">简体中文</a>｜<a href="README.en.md">English</a>
+</div>
 
-[繁體中文](README.md) | [简体中文](README.zh-Hans.md) | [English](README.en.md)
-
-> PC-free sideloading tool — pairing, signing, and installation all on-device, with LiveContainer-style container management built in.
+<br><br>
 
 ## ✨ Features
 
-- **PC-free installation flow** — follows the [FrizzleM/SideInstaller](https://github.com/FrizzleM/SideInstaller) flow; the first-run onboarding guides you through:
-  1. Import and trust the RPPairing file
-  2. Import `.p12` + `.mobileprovision` (expiry checked automatically)
-  3. Sign & install (free account 3-slot quota, JIT-less container launch)
-- **App management** — container and installed-app management, IPA import / URL install, 3-app slot quota, reorderable container list
-- **Featured feed** — remote JSON feed with a local cache fallback (`featured-fallback.json`)
-- **Settings** — pairing, certificates, JIT-less / container settings, VPN / tunnel, storage cleanup, language switch, About
-- **Localization** — Traditional Chinese (`zh-Hant`) by default; switch in-app to **English (`en`)** or **Simplified Chinese (`zh-Hans`)**. Technical terms such as `IPA`, `Bundle ID`, `Entitlements`, `Log`, `JIT`, `VPN` stay in English in all locales
+- Complete the initial installation of sid9tool without a computer
 
-## 📱 UI Structure
+- Sign and install IPAs onto your device using a free Apple Developer account
 
-4 primary bottom tabs:
+- Built-in container — no need to install LiveContainer separately
 
-| Tab | Description |
-| --- | --- |
-| Home (首頁) | Actionable status cards & quick setup status |
-| App | Container & sideloaded-app management, IPA import / URL install |
-| Featured (精選) | Remote JSON feed (local cache fallback) |
-| Settings (設定) | Pairing, certificates, container settings, VPN / tunnel, storage, language, About |
+- Automatic 7-day app re-signing so your apps never expire
 
-## ⚙️ Requirements
+<br><br>
 
-| Item | Version |
-| --- | --- |
-| iOS | 16.0+ |
-| Swift | 5.10 |
-| Orientation | Portrait only |
-| Languages | `zh-Hant` (default), `en`, `zh-Hans` |
+## 📱 PC-Free Installation Guide
+Coming Soon
 
-## 🛠 Local Build
+<br><br>
 
-```bash
-# 1. Install XcodeGen
-brew install xcodegen
+## ⚙️ iOS Version Requirements
 
-# 2. Generate the Xcode project
-xcodegen generate
+<table>
+  <thead>
+    <tr>
+      <th></th>
+      <th>Initial PC-Free Setup</th>
+      <th>Sideload IPA</th>
+      <th>Built-in Container</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>iOS 27+</td>
+      <td>✅ 100% PC-Free</td>
+      <td>✅ Supported</td>
+      <td>✅ Supported</td>
+    </tr>
+    <tr>
+      <td>iOS 26.4+</td>
+      <td>⚠️ Requires a computer to obtain a remote pairing file</td>
+      <td>✅ Supported</td>
+      <td>✅ Supported</td>
+    </tr>
+    <tr>
+      <td>iOS 17.4+</td>
+      <td>⚠️ Requires a computer to generate a standard pairing file</td>
+      <td>✅ Supported</td>
+      <td>✅ Supported</td>
+    </tr>
+    <tr>
+      <td>iOS 16.0+</td>
+      <td>❌ Not Supported</td>
+      <td>✅ Supported</td>
+      <td>✅ Supported</td>
+    </tr>
+    <tr>
+      <td>Below iOS 16.0</td>
+      <td colspan="3">❌ This app requires iOS 16.0 or later</td>
+    </tr>
+  </tbody>
+</table>
 
-# 3. Build (unsigned)
-xcodebuild build \
-  -project sid9tool.xcodeproj \
-  -scheme sid9tool \
-  -configuration Release \
-  -destination 'generic/platform=iOS' \
-  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=''
-```
-
-## ☁️ GitHub Actions Build
-
-Push to `main` or trigger the `build-ipa` workflow manually:
-
-1. `xcodegen generate` to create the project
-2. `xcodebuild` builds Release (unsigned)
-3. Packages an **unsigned `.ipa`** and uploads it as artifact `sid9tool-unsigned`
-
-After downloading the artifact, sign it with your own certificate and install it on your device.
-
-## 📁 Project Structure
-
-```
-sid9tool/
-├── src/sid9tool/
-│   ├── App/              # Sid9toolApp entry point
-│   ├── Models/           # AppModels
-│   ├── Resources/        # featured-fallback.json
-│   ├── Services/         # ContainerManager, SigningEngine, SlotManager,
-│   │                     # PairingService, CertificateService, TunnelService,
-│   │                     # FeaturedFeedService, LocalizationService…
-│   └── Views/            # Home, App, Featured, Settings, Onboarding
-├── .github/workflows/    # build-ipa.yml
-├── project.yml           # XcodeGen config
-└── featured.json         # Featured feed sample
-```
+<br><br>
 
 ## 🙏 Acknowledgements
 
-- [LiveContainer](https://github.com/MrKai77/LiveContainer) — container / runtime management UI style
-- [FrizzleM/SideInstaller](https://github.com/FrizzleM/SideInstaller) — PC-free sideloading flow reference
-- Primary developer: [Butt9r](https://github.com/Butt9r)
+- [LiveContainer](https://github.com/MrKai77/LiveContainer) - Built-in container architecture
+- [FrizzleM/SideInstaller](https://github.com/FrizzleM/SideInstaller) - PC-free installation flow reference
+
+<br><br>
 
 ## ⚠️ Disclaimer
 
-This project is for learning and research purposes only. Please comply with Apple's Terms of Service and applicable local laws, and only install apps you trust. The developer is not responsible for any consequences of use.
-
-## 📄 License
-
-MIT License (see the license terms; please keep the acknowledgements above)
+This project is intended for educational and research purposes only. Please comply with Apple's Terms of Service and local laws, and only install apps that you trust. The developer assumes no responsibility for any consequences resulting from the use of this software.
