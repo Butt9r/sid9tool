@@ -1,55 +1,124 @@
 import Foundation
 import Security
+import CryptoKit
 
-/// P1-5: CMS / PKCS#7 signing & verification (pure Security.framework, sandbox-safe).
+/// P1-5: CMS / PKCS#7 signing & verification (pure Swift + Security.framework).
 ///
-/// - `sign` produces a PKCS#7 SignedData DER blob via `SecCreateSignatureTransform`
-///   (works on the iOS 16 SDK; no external `codesign`/`openssl` needed).
-/// - `verify` parses the PKCS#7 structure in pure Swift (no `SecContentEncoder` —
-///   absent from the iOS SDK) and checks the signature with `SecCreateVerifyTransform`.
+/// - `sign` uses `SecKeyCreateSignature` (RSA PKCS#1 v1.5 SHA-256) and
+///   manually constructs a CMS SignedData DER blob (RFC 5652).
+/// - `verify` parses the PKCS#7 structure in pure Swift and checks the
+///   signature with `SecKeyVerifySignature`.
 ///
 /// The blob embeds the signing certificate in its `certificates` field, so P1-6
 /// can extract it and verify the chain against the provisioning profile.
 enum CMS {
 
-    /// PKCS#7 SignedData content type (OID 1.2.840.113549.1.7.2).
-    static let signedDataOID: [UInt8] = [0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x07, 0x02]
+    // MARK: - OIDs
+    static let oidSignedData: [UInt8] = [0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x07, 0x02]
+    static let oidData: [UInt8] = [0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x07, 0x01]
+    static let oidSHA256: [UInt8] = [0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01]
+    static let oidRSA: [UInt8] = [0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01]
+    static let oidEContentType: [UInt8] = [0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x09, 0x03]
+    static let oidMessageDigest: [UInt8] = [0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x09, 0x04]
 
-    /// Sign `content` with `identity` and return a PKCS#7 SignedData DER blob.
-    /// `contentType` defaults to `signedDataOID` (the ad-hoc / in-house app case,
-    /// where the signed payload is the app bundle).
+    /// Sign `content` with `identity` and return a CMS SignedData DER blob (RFC 5652).
     static func sign(identity: SecIdentity, cert: SecCertificate, content: Data,
-                     contentType: [UInt8] = signedDataOID) throws -> Data {
-        var transform: SecTransform?
-        let status = SecCreateSignatureTransform(
-            identity, cert, contentType as Data, nil, &transform)
-        guard status == errSecSuccess, let t = transform else {
-            throw CMSError.signFailed(status)
+                     contentType: [UInt8] = oidData) throws -> Data {
+        var privKey: SecKey?
+        guard SecIdentityCopyPrivateKey(identity, &privKey) == errSecSuccess,
+              let key = privKey else { throw CMSError.signFailed(errSecAuthFailed) }
+        guard let certDER = SecCertificateCopyData(cert) else {
+            throw CMSError.signFailed(errSecInternalComponent)
         }
-        SecTransformSetAttribute(t, kSecTransformInputAttributeName, content as CFData, nil)
-        var result: CFTypeRef?
-        let execStatus = SecTransformExecute(t, nil, &result)
-        guard execStatus == errSecSuccess, let r = result,
-              let out = r as? Data else {
-            throw CMSError.signFailed(execStatus)
+        let cb = [UInt8](certDER)
+        guard let outer = tlv(cb, 0), outer.tag == 0x30,
+              let tbs = tlv(outer.value, 0), tbs.tag == 0x30 else {
+            throw CMSError.signFailed(errSecInternalComponent)
         }
-        return out
+        var off = 0
+        if let v = tlv(tbs.value, off), v.tag == 0xA0 { off = v.next }
+        guard let serial = tlv(tbs.value, off), serial.tag == 0x02 else {
+            throw CMSError.signFailed(errSecInternalComponent)
+        }
+        off = serial.next
+        if let sa = tlv(tbs.value, off), sa.tag == 0x30 { off = sa.next }
+        guard let issuer = tlv(tbs.value, off), issuer.tag == 0x30 else {
+            throw CMSError.signFailed(errSecInternalComponent)
+        }
+        let hash = [UInt8](SHA256.hash(data: content))
+        let attr1 = derSeq(derOID(oidEContentType) + derSet(derOID(contentType)))
+        let attr2 = derSeq(derOID(oidMessageDigest) + derSet(derOctetString(hash)))
+        let attrsContent = attr1 + attr2
+        let signedAttrsEnc = derTLV(0xA0, attrsContent)
+        var sigData: Data?
+        let s2 = SecKeyCreateSignature(key, .rsaSignatureDigestPKCS1v15SHA256,
+                                       Data(signedAttrsEnc) as CFData, &sigData)
+        guard s2 == errSecSuccess, let signature = sigData else {
+            throw CMSError.signFailed(s2)
+        }
+        let digestAlg = derSeq(derOID(oidSHA256) + derNull())
+        let sigAlg = derSeq(derOID(oidRSA) + derNull())
+        let ias = derSeq(derSeq(issuer.value) + derInteger(serial.value))
+        let siContent = derInteger([0x01]) + ias + digestAlg + signedAttrsEnc + sigAlg
+            + derOctetString([UInt8](signature))
+        let signerInfo = derSeq(siContent)
+        let signerInfos = derSet(signerInfo)
+        let digestAlgs = derSet(digestAlg)
+        let eci = derSeq(derOID(oidData) + derTLV(0xA0, [UInt8](content)))
+        let certsField = derTLV(0xA0, cb)
+        let sdContent = derInteger([0x01]) + digestAlgs + eci + certsField + signerInfos
+        let sd = derTLV(0xA0, sdContent)
+        return Data(derSeq(derOID(oidSignedData) + sd))
     }
 
-    /// Verify a PKCS#7 SignedData blob against `content`.
-    /// The certificates are extracted from the blob itself, so no external
-    /// trust store is required (sideloading verifies against the profile's
-    /// DeveloperCertificates, not the system store).
+    /// Verify a CMS SignedData blob against `content`.
+    /// Certificates are extracted from the blob; signature checked via `SecKeyVerifySignature`.
     static func verify(data: Data, content: Data) -> Bool {
+        let b = [UInt8](data)
+        guard let ci = tlv(b, 0), ci.tag == 0x30 else { return false }
+        var off = 0
+        guard let oid = tlv(ci.value, 0), oid.tag == 0x06 else { return false }
+        off = oid.next
+        guard let sdTLV = tlv(ci.value, off), sdTLV.tag == 0xA0 else { return false }
+        var so = 0
+        if let v = tlv(sdTLV.value, so), v.tag == 0x02 { so = v.next }
+        if let s = tlv(sdTLV.value, so), s.tag == 0x31 { so = s.next }
+        guard let eci = tlv(sdTLV.value, so), eci.tag == 0x30 else { return false }
+        so = eci.next
+        // Parse eContent from encapContentInfo
+        var eo = 0
+        if let eoid = tlv(eci.value, eo), eoid.tag == 0x06 { eo = eoid.next }
+        guard let eContent = tlv(eci.value, eo), eContent.tag == 0xA0 else { return false }
+        guard Data(eContent.value) == content else { return false }
+        // certificates
+        guard let certsTLV = tlv(sdTLV.value, so), certsTLV.tag == 0xA0 else { return false }
+        so = certsTLV.next
+        // signerInfos SET
+        guard let siSet = tlv(sdTLV.value, so), siSet.tag == 0x31 else { return false }
+        guard let si = tlv(siSet.value, 0), si.tag == 0x30 else { return false }
+        // Parse SignerInfo: version, ias, digestAlg, signedAttrs, sigAlg, signature
+        var io = 0
+        if let iv = tlv(si.value, io), iv.tag == 0x02 { io = iv.next }
+        if let ias = tlv(si.value, io), ias.tag == 0x30 { io = ias.next }
+        if let da = tlv(si.value, io), da.tag == 0x30 { io = da.next }
+        guard let sa = tlv(si.value, io), sa.tag == 0xA0 else { return false }
+        io = sa.next
+        if let alg = tlv(si.value, io), alg.tag == 0x30 { io = alg.next }
+        guard let sig = tlv(si.value, io), sig.tag == 0x04 else { return false }
+        // Rebuild signedAttrs for verification
+        let hash = [UInt8](SHA256.hash(data: content))
+        let attr1 = derSeq(derOID(oidEContentType) + derSet(derOID(oidData)))
+        let attr2 = derSeq(derOID(oidMessageDigest) + derSet(derOctetString(hash)))
+        let signedAttrsEnc = derTLV(0xA0, attr1 + attr2)
+        // Get public key from embedded cert
         guard let certs = extractCertificates(from: data), !certs.isEmpty else { return false }
-        for cert in certs {
-            var transform: SecTransform?
-            let status = SecCreateVerifyTransform(
-                cert, signedDataOID as Data, &transform)
-            guard status == errSecSuccess, let t = transform else { continue }
-            SecTransformSetAttribute(t, kSecTransformInputAttributeName, content as CFData, nil)
-            var out: CFTypeRef?
-            if SecTransformExecute(t, nil, &out) == errSecSuccess { return true }
+        for certDER in certs {
+            guard let cert = SecCertificateCreateWithData(nil, certDER as CFData) else { continue }
+            guard let pubKey = SecCertificateCopyKey(cert) else { continue }
+            let ok = SecKeyVerifySignature(pubKey, .rsaSignatureDigestPKCS1v15SHA256,
+                                           Data(signedAttrsEnc) as CFData,
+                                           Data(sig.value) as CFData)
+            if ok { return true }
         }
         return false
     }
@@ -100,6 +169,38 @@ enum CMS {
         guard p + len <= b.count else { return nil }
         return (tag, Array(b[p..<(p + len)]), p + len)
     }
+    // MARK: - DER helpers (in-memory, for selfCheck only)
+
+    /// Minimal DER TLV encoder: tag byte + length + value.
+    private static func derTLV(_ tag: UInt8, _ value: [UInt8]) -> [UInt8] {
+        var out = [tag]
+        if value.count < 0x80 {
+            out.append(UInt8(value.count))
+        } else {
+            var len = value.count
+            var lenBytes: [UInt8] = []
+            while len > 0 { lenBytes.insert(UInt8(len & 0xFF), at: 0); len >>= 8 }
+            out.append(UInt8(0x80 | lenBytes.count))
+            out.append(contentsOf: lenBytes)
+        }
+        out.append(contentsOf: value)
+        return out
+    }
+
+    private static func derSeq(_ content: [UInt8]) -> [UInt8] { derTLV(0x30, content) }
+    private static func derSet(_ content: [UInt8]) -> [UInt8] { derTLV(0x31, content) }
+    private static func derNull() -> [UInt8] { [0x05, 0x00] }
+    private static func derOctetString(_ data: [UInt8]) -> [UInt8] { derTLV(0x04, data) }
+    private static func derOID(_ bytes: [UInt8]) -> [UInt8] { derTLV(0x06, bytes) }
+
+    /// Encode raw bytes as a DER INTEGER (adds leading 0x00 if high bit set).
+    private static func derInteger(_ bytes: [UInt8]) -> [UInt8] {
+        var b = bytes
+        if b.isEmpty { b = [0] }
+        if b[0] & 0x80 != 0 { b.insert(0, at: 0) } // keep positive
+        return derTLV(0x02, b)
+    }
+
     // MARK: - Self-check (runs on the CI macOS runner, see main.swift)
     #if os(macOS)
     /// Returns "" on success, otherwise a human-readable failure report.
