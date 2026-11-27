@@ -202,6 +202,45 @@ enum CMS {
 
     // MARK: - Self-check (runs on the CI macOS runner, see main.swift)
     #if os(macOS)
+    /// Build a self-signed X.509 v3 certificate (DER) in pure Swift.
+    /// `SecCertificateCreateWithProperties` is not a public API, so the
+    /// certificate is assembled by hand from the DER helpers above.
+    private static func makeSelfSignedCert(privateKey: SecKey, cn: String) -> Data? {
+        // SubjectPublicKeyInfo (DER): for a *public* key, kSecAttrKeyValue is
+        // the DER-encoded SPKI (private-key form is documented differently).
+        guard let pubKey = SecKeyCopyPublicKey(privateKey),
+              let attrs = SecKeyCopyAttributes(pubKey) as? [String: Any],
+              let spki = attrs[kSecAttrKeyValue as String] as? Data else { return nil }
+        let spkiBytes = [UInt8](spki)
+        // X509Name { CN = cn }
+        let c = [UInt8](cn.utf8)
+        let atv = [0x55, 0x04, 0x03] + c
+        let atvTLV = [0x30, UInt8(atv.count)] + atv
+        let set = [0x31, UInt8(atvTLV.count)] + atvTLV
+        let rdn = [0x30, UInt8(set.count)] + set
+        let name = [UInt8]([0x30, UInt8(rdn.count)] + rdn)
+        // Validity (UTCTime): now-1d .. now+365d
+        func utc(_ d: Date) -> [UInt8] {
+            let p = Calendar(identifier: .utc).dateComponents(
+                [.year, .month, .day, .hour, .minute, .second], from: d)
+            let s = String(format: "%02d%02d%02d%02d%02d%02dZ",
+                           p.year % 100, p.month, p.day, p.hour, p.minute, p.second)
+            return [UInt8](s.utf8)
+        }
+        let now = Date()
+        let validity = derSeq(derTLV(0x17, utc(now.addingTimeInterval(-86_400)))
+            + derTLV(0x17, utc(now.addingTimeInterval(365 * 86_400))))
+        // sha256WithRSAEncryption (1.2.840.113549.1.1.11)
+        let sigAlg = derSeq(derOID([0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0B]) + derNull())
+        let version = derTLV(0xA0, derInteger([0x02]))
+        let tbs = derSeq(version + derInteger([0x01]) + sigAlg + name + validity + name + spkiBytes)
+        var err: Unmanaged<CFError>?
+        guard let sig = SecKeyCreateSignature(privateKey, .rsaSignatureDigestPKCS1v15SHA256,
+                                              Data(tbs) as CFData, &err) else { return nil }
+        let sigBits = derTLV(0x03, [0x00] + [UInt8](sig as Data))
+        return Data(derSeq(tbs + sigAlg + sigBits))
+    }
+
     /// Returns "" on success, otherwise a human-readable failure report.
     static func selfCheck() -> String {
         // 1. Generate a throwaway RSA-2048 key + self-signed cert for the test.
@@ -209,31 +248,15 @@ enum CMS {
             kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
             kSecAttrKeySizeInBits as String: 2048
         ]
-        var priv: SecKey?
-        guard SecKeyCreateRandomKey(keyAttrs as CFDictionary, nil, &priv) == errSecSuccess,
-              let privateKey = priv else {
+        var err: Unmanaged<CFError>?
+        guard let privateKey = SecKeyCreateRandomKey(keyAttrs as CFDictionary, &err) else {
             return "selfCheck: SecKeyCreateRandomKey failed"
         }
-        // Subject: X509Name { CN = "sid9tool-selfcheck" } (DER, in-memory only).
-        var name = Data()
-        let cn = [UInt8]("sid9tool-selfcheck".utf8)
-        let atv = [0x55, 0x04, 0x03] + cn                      // AttributeValue
-        let atvTLV = [0x30, UInt8(atv.count)] + atv             // SEQUENCE
-        let set = [0x31, UInt8(atvTLV.count)] + atvTLV          // SET
-        let rdn = [0x30, UInt8(set.count)] + set                // RDN
-        name.append(contentsOf: [0x30, UInt8(rdn.count)] + rdn) // X509Name
-        let certAttrs: [String: Any] = [
-            kSecCertPropertySubject as String: name,
-            kSecPrivateKeyAttrs as String: [kSecAttrKeyType as String: kSecAttrKeyTypeRSA]
-        ]
-        var cert: SecCertificate?
-        guard SecCertificateCreateWithProperties(nil, certAttrs as CFDictionary, &cert) == errSecSuccess,
-              let certificate = cert else {
-            return "selfCheck: SecCertificateCreateWithProperties failed"
+        guard let certData = makeSelfSignedCert(privateKey: privateKey, cn: "sid9tool-selfcheck"),
+              let certificate = SecCertificateCreateWithData(nil, certData as CFData) else {
+            return "selfCheck: self-signed certificate creation failed"
         }
-        var identity: SecIdentity?
-        guard SecIdentityCreate(nil, certificate, privateKey, &identity) == errSecSuccess,
-              let id = identity else {
+        guard let id = SecIdentityCreate(nil, certificate, privateKey) else {
             return "selfCheck: SecIdentityCreate failed"
         }
 
@@ -242,7 +265,8 @@ enum CMS {
         do {
             let cms = try sign(identity: id, cert: certificate, content: content)
             // 3. Certificates must be embedded in the blob.
-            guard let certs = extractCertificates(from: cms), !certs.isEmpty else {
+            let certs = extractCertificates(from: cms)
+            guard !certs.isEmpty else {
                 return "selfCheck: no certificates embedded in PKCS#7 blob"
             }
             // 4. Verify (positive).
