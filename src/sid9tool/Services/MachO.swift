@@ -283,10 +283,10 @@ enum MachO {
     /// Build a minimal LC_CODE_SIGNATURE load command (16 bytes).
     static func makeCodeSigLC(dataoff: UInt32, datasize: UInt32) -> Data {
         var d = Data(count: 16)
-        withUnsafeMutableBytes(of: MachOLC.codeSignature) { d.replaceSubrange(0..<4, with: $0) }
-        withUnsafeMutableBytes(of: UInt32(16)) { d.replaceSubrange(4..<8, with: $0) }
-        withUnsafeMutableBytes(of: dataoff) { d.replaceSubrange(8..<12, with: $0) }
-        withUnsafeMutableBytes(of: datasize) { d.replaceSubrange(12..<16, with: $0) }
+        withUnsafeBytes(of: MachOLC.codeSignature) { d.replaceSubrange(0..<4, with: $0) }
+        withUnsafeBytes(of: UInt32(16)) { d.replaceSubrange(4..<8, with: $0) }
+        withUnsafeBytes(of: dataoff) { d.replaceSubrange(8..<12, with: $0) }
+        withUnsafeBytes(of: datasize) { d.replaceSubrange(12..<16, with: $0) }
         return d
     }
 
@@ -299,9 +299,9 @@ enum MachO {
         // Build a tiny arm64 thin binary: header + 2 LCs (LC_SEGMENT_64 __TEXT, LC_CODE_SIGNATURE)
         // mach_header_64 = 32 bytes. LC_SEGMENT_64 = 72 bytes. LC_CODE_SIGNATURE = 16 bytes.
         var d = Data()
-        func w32(_ v: UInt32) { withUnsafeMutableBytes(of: v) { d.append(contentsOf: $0) } }
-        func w32s(_ v: Int32) { withUnsafeMutableBytes(of: v) { d.append(contentsOf: $0) } }
-        func w64(_ v: UInt64) { withUnsafeMutableBytes(of: v) { d.append(contentsOf: $0) } }
+        func w32(_ v: UInt32) { withUnsafeBytes(of: v) { d.append(contentsOf: $0) } }
+        func w32s(_ v: Int32) { withUnsafeBytes(of: v) { d.append(contentsOf: $0) } }
+        func w64(_ v: UInt64) { withUnsafeBytes(of: v) { d.append(contentsOf: $0) } }
         func wstr(_ s: String) { for b in s.utf8 { d.append(b) }; d.append(0) }
         // mach_header_64 (32 bytes): magic,cputype,cpusubtype,filetype,ncmds,sizeofcmds,reserved,flags
         w32(MachOMagic.mhMagic64); w32s(MachOCPU.arm64); w32s(MachOCPU.subTypeArm64E)
@@ -327,8 +327,8 @@ enum MachO {
         }
         // Build a fat wrapper around the thin binary
         var fat = Data()
-        func fw32(_ v: UInt32) { withUnsafeMutableBytes(of: v) { fat.append(contentsOf: $0) } }
-        func fw32s(_ v: Int32) { withUnsafeMutableBytes(of: v) { fat.append(contentsOf: $0) } }
+        func fw32(_ v: UInt32) { withUnsafeBytes(of: v) { fat.append(contentsOf: $0) } }
+        func fw32s(_ v: Int32) { withUnsafeBytes(of: v) { fat.append(contentsOf: $0) } }
         fw32(MachOMagic.fatMagic); fw32(1)
         fw32s(MachOCPU.arm64); fw32s(MachOCPU.subTypeArm64E); fw32(8); fw32(UInt32(d.count)); fw32(4)
         fat.append(d)
