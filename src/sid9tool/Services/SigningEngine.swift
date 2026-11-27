@@ -388,17 +388,18 @@ final class SigningEngine: ObservableObject {
         }
         files.sort { $0.path < $1.path }
 
-        let now = Date()
-        let d = UInt32(now.timeIntervalSince1970)
-        let msSinceMidnight = UInt16(((d % 86400) * 1000 / 86) % 65536) // seconds->1/2s units approx (pre-wrap to avoid UInt16 trap)
-        let daysSinceEpoch = UInt16(d / 86400 % 16384)
-        let ms2 = UInt16((msSinceMidnight / 20) % 20) // 1/20s -> 1/100s
-        let ms10 = ms2 * 100
-        let m = UInt16((d % 3600) / 60)
-        let h = UInt16((d % 86400) / 3600)
-        var dosTime: UInt16 = (UInt16(h) << 11) | (m << 5) | (ms10 / 32)
-        _ = msSinceMidnight
-        let dosDate: UInt16 = (UInt16(daysSinceEpoch & 0x1FFF)) | (UInt16(1) << 9)
+        // P0-7a: DOS time/date via Calendar. DOS epoch = 1980-01-01 (not 1970).
+        // DOS date bits: 0-4 day, 5-8 month, 9-15 year-1980.
+        // DOS time bits: 0-4 sec/2, 5-10 minute, 11-15 hour.
+        let dosNow = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: Date())
+        let dosY = UInt16(max(dosNow.year ?? 1980, 1980) - 1980)
+        let dosMo = UInt16(min(max(dosNow.month ?? 1, 1), 12))
+        let dosDay = UInt16(min(max(dosNow.day ?? 1, 1), 31))
+        let dosHour = UInt16(min(max(dosNow.hour ?? 0, 0), 23))
+        let dosMin = UInt16(min(max(dosNow.minute ?? 0, 0), 59))
+        let dosSec = UInt16(min(max(dosNow.second ?? 0, 0), 59))
+        let dosDate: UInt16 = (dosY << 9) | (dosMo << 5) | dosDay
+        let dosTime: UInt16 = (dosHour << 11) | (dosMin << 5) | (dosSec >> 1)
         var crcTable = [UInt32](repeating: 0, count: 256)
         for i in 0..<256 {
             var c = UInt32(i)
@@ -417,6 +418,16 @@ final class SigningEngine: ObservableObject {
         func put(_ x: UInt8) { outBuf.append(x) }
         func put16(_ x: UInt16) { put(UInt8(x & 0xFF)); put(UInt8((x >> 8) & 0xFF)) }
         func put32(_ x: UInt32) { put(UInt8(x & 0xFF)); put(UInt8((x >> 8) & 0xFF)); put(UInt8((x >> 16) & 0xFF)); put(UInt8((x >> 24) & 0xFF)) }
+
+        // P0-7b: external file attributes = Unix mode in the upper 16 bits.
+        // Executables (Mach-O magic in the first 4 bytes) keep their exec bit.
+        func unixExternalAttrs(for data: Data) -> UInt32 {
+            let isMachO = data.count >= 4
+                && ((data[0] == 0xFE && data[1] == 0xED && data[2] == 0xFA && (data[3] == 0xCE || data[3] == 0xCF))
+                    || (data[0] == 0xCE && data[1] == 0xFA && data[2] == 0xED && (data[3] == 0xFE || data[3] == 0xFC)))
+            let mode: UInt32 = isMachO ? 0o100755 : 0o100644
+            return (mode << 16) & 0xFFFFFFFF
+        }
 
         var cdEntries = [(offset: UInt32, crc: UInt32, compSize: UInt32, uncSize: UInt32, name: [UInt8], attrs: UInt32, dosDate: UInt16, dosTime: UInt16)]()
 
@@ -439,13 +450,13 @@ final class SigningEngine: ObservableObject {
             put16(0)          // extra len
             outBuf.append(contentsOf: nameBytes)
             outBuf.append(data)
-            cdEntries.append((offset: off, crc: crc, compSize: UInt32(data.count), uncSize: UInt32(data.count), name: nameBytes, attrs: 0, dosDate: dosDate, dosTime: dosTime))
+            cdEntries.append((offset: off, crc: crc, compSize: UInt32(data.count), uncSize: UInt32(data.count), name: nameBytes, attrs: unixExternalAttrs(for: data), dosDate: dosDate, dosTime: dosTime))
         }
 
         let cdStart = UInt32(outBuf.count)
         for e in cdEntries {
             put32(0x02014B50) // central dir sig
-            put16(0x14)       // version made by
+            put16(0x031E)     // P0-7b: version made by = 3.0 / made on Unix
             put16(0x14)       // version needed
             put16(0x0800)     // flags
             put16(0)          // method stored
