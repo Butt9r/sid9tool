@@ -216,7 +216,7 @@ struct SelfInstallGuideView: View {
                 let result = try SigningEngine.sign(request)
                 // P0-5: a completed sign refreshes the free slot (renewal
                 // restores the quota for the next 7 days).
-                appState.slot.refreshOnSign()
+                appState.slot = SlotManager.renew(appState.slot)
                 let iso = ISO8601DateFormatter()
                 UserDefaults.standard.set(iso.string(from: Date()), forKey: Self.lastSignedKey)
                 UserDefaults.standard.set(result.outputPath.path, forKey: Self.lastSignedURLKey)
