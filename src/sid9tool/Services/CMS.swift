@@ -48,10 +48,9 @@ enum CMS {
         let attr2 = derSeq(derOID(oidMessageDigest) + derSet(derOctetString(hash)))
         let attrsContent = attr1 + attr2
         let signedAttrsEnc = derTLV(0xA0, attrsContent)
-        let signedAttrsHash = [UInt8](SHA256.hash(data: Data(signedAttrsEnc)))
         var err: Unmanaged<CFError>?
         guard let sigData = SecKeyCreateSignature(key, .rsaSignatureDigestPKCS1v15SHA256,
-                                                  Data(signedAttrsHash) as CFData, &err) else {
+                                                  Data(signedAttrsEnc) as CFData, &err) else {
             throw CMSError.signFailed(errSecInternalComponent)
         }
         let signature = sigData as Data
@@ -115,9 +114,8 @@ enum CMS {
         for certDER in certs {
             guard let cert = SecCertificateCreateWithData(nil, certDER as CFData) else { continue }
             guard let pubKey = SecCertificateCopyKey(cert) else { continue }
-            let signedAttrsHash = [UInt8](SHA256.hash(data: Data(signedAttrsEnc)))
             let ok = SecKeyVerifySignature(pubKey, .rsaSignatureDigestPKCS1v15SHA256,
-                                           Data(signedAttrsHash) as CFData,
+                                           Data(signedAttrsEnc) as CFData,
                                            Data(sig.value) as CFData, nil)
             if ok { return true }
         }
@@ -245,10 +243,9 @@ enum CMS {
         let sigAlg = derSeq(derOID([0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0B]) + derNull())
         let version = derTLV(0xA0, derInteger([0x02]))
         let tbs = derSeq(version + derInteger([0x01]) + sigAlg + name + validity + name + spkiBytes)
-        let tbsHash = [UInt8](SHA256.hash(data: Data(tbs)))
         var err: Unmanaged<CFError>?
         guard let sig = SecKeyCreateSignature(privateKey, .rsaSignatureDigestPKCS1v15SHA256,
-                                              Data(tbsHash) as CFData, &err) else {
+                                              Data(tbs) as CFData, &err) else {
             FileHandle.standardError.write("makeSelfSignedCert: SecKeyCreateSignature failed err=\(String(describing: err))\n".data(using: .utf8)!)
             return nil
         }
