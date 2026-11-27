@@ -43,6 +43,10 @@ jobs:
             CODE_SIGN_IDENTITY='' \
             -derivedDataPath "$PWD/DerivedData"
 
+      - name: Run self-check (P1-3 / P1-4)
+        run: |
+          swift selfcheck.swift src/sid9tool/Services/MachO.swift src/sid9tool/Services/CodeSigner.swift
+
       - name: Package unsigned IPA
         run: |
           APP_PATH=$(find DerivedData/Build/Products -name "sid9tool.app" -type d | head -n 1)
