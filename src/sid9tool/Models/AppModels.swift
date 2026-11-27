@@ -67,6 +67,10 @@ struct CertificateProfile: Codable, Equatable {
     var notBefore: Date?
     var expirationDate: Date?
     var provisioningContents: Data?
+    /// P1-2: DER data of every cert in the profile's `DeveloperCertificates`.
+    var developerCertificates: [Data]?
+    /// P1-2: raw `ProvisionedDevices` entries (UDIDs or device IDs); nil = all-devices profile.
+    var provisionedDevices: [String]?
 
     var isExpired: Bool {
         guard let expirationDate else { return false }

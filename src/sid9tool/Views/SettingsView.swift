@@ -80,7 +80,7 @@ struct SettingsView: View {
                 P12PasswordSheet(onCancel: { pendingP12 = nil }) { password in
                     pendingP12 = nil
                     do {
-                        let (certName, _) = try CertificateService().importP12(at: url, password: password)
+                        let (certName, _, _) = try CertificateService().importP12(at: url, password: password)
                         appState.certificate?.certCommonName = certName
                         appState.certificate?.p12ImportedAt = .now
                         certNote = localization.t("已匯入 .p12（\(certName)）",

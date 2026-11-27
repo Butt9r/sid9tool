@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import CryptoKit
 
 /// Certificate (.p12 + .mobileprovision) import & expiry parsing.
 final class CertificateService {
@@ -64,10 +65,11 @@ final class CertificateService {
     }
 
     /// Import a password-protected .p12, extract the SecIdentity + SecCertificate,
-    /// store the identity in the Keychain, and return the certificate Common Name.
+    /// store the identity in the Keychain, and return a display name + the leaf
+    /// certificate DER (for P1-2 matching against the profile).
     /// The password is used in memory only — it is never written to disk,
     /// UserDefaults or the Keychain.
-    func importP12(at url: URL, password: String) throws -> (certName: String, identity: SecIdentity) {
+    func importP12(at url: URL, password: String) throws -> (certName: String, certData: Data?, identity: SecIdentity) {
         let didAccess = url.startAccessingSecurityScopedResource()
         defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
         guard let data = try? Data(contentsOf: url) else { throw P12ImportError.fileNotFound }
@@ -93,13 +95,17 @@ final class CertificateService {
         guard let identity, let cert else { throw P12ImportError.noIdentity }
 
         // SecPKCS12Import already stored the identity in the default keychain.
+        // CN is parsed from SecCertificateCopyData (DER X.509) — pure Swift,
+        // because SecCertificateCopyName / CopyValues / CopySubjectAttributes
+        // are all absent from the iOS SDK (see TODO.md 已試過 list).
+        var certData: Data?
         var certName = ""
-        // SecCertificateCopyName is available on iOS (unlike SecCertificateCopyValues /
-        // SecCertificateCopySubjectAttributes, which are not in the iOS SDK).
-        if let name = SecCertificateCopyName(cert) as String? {
-            certName = name
+        if let raw = SecCertificateCopyData(cert) {
+            certData = raw
+            certName = Self.parseCommonName(der: raw)
+                ?? raw.sha256Fingerprint16()
         }
-        return (certName, identity)
+        return (certName, certData, identity)
     }
 
     /// Import a .p12 + .mobileprovision pair; returns a parsed profile.
@@ -124,6 +130,9 @@ final class CertificateService {
                     ?? fields["ProvisionedDevices"] != nil ? "explicit" : nil
                 if let nb = fields["NotBefore"] as? Date { profile.notBefore = nb }
                 if let exp = fields["ExpirationDate"] as? Date { profile.expirationDate = exp }
+                // P1-2: keep the profile's developer cert set + device list for matching.
+                profile.developerCertificates = (fields["DeveloperCertificates"] as? [Data])
+                profile.provisionedDevices = (fields["ProvisionedDevices"] as? [String])
             }
         }
         return profile
@@ -151,5 +160,79 @@ final class CertificateService {
         guard let dict = try? PropertyListSerialization.propertyList(from: xml, options: [], format: nil) as? [String: Any]
         else { return nil }
         return (data, dict)
+    }
+
+    // MARK: - P1-1: pure-Swift X.509 DER helpers (no SecCertificateCopy* CF API)
+
+    /// Read one DER TLV at `offset`; returns (tag, value, nextOffset) or nil.
+    private static func derTLV(_ b: [UInt8], _ offset: Int) -> (tag: Int, value: [UInt8], next: Int)? {
+        guard offset + 2 <= b.count else { return nil }
+        let tag = Int(b[offset])
+        var len = Int(b[offset + 1])
+        var p = offset + 2
+        if len & 0x80 != 0 {
+            let n = len & 0x7f
+            guard n > 0, p + n <= b.count else { return nil }
+            len = 0
+            for i in 0..<n { len = (len << 8) | Int(b[p + i]) }
+            p += n
+        }
+        guard p + len <= b.count else { return nil }
+        return (tag, Array(b[p..<(p + len)]), p + len)
+    }
+
+    private static func derString(_ tag: Int, _ b: [UInt8]) -> String? {
+        switch tag {
+        case 0x13, 0x16, 0x1A: return String(data: Data(b), encoding: .ascii)
+        case 0x0C: return String(data: Data(b), encoding: .utf8)
+        default: return String(data: Data(b), encoding: .utf8)
+        }
+    }
+
+    /// Extract the Subject Common Name (OID 2.5.4.3) from X.509 DER.
+    /// Returns nil if the structure is malformed or has no CN.
+    static func parseCommonName(der: Data) -> String? {
+        let b = [UInt8](der)
+        guard let cert = derTLV(b, 0), cert.tag == 0x30 else { return nil }
+        guard let tbs = derTLV(cert.value, 0), tbs.tag == 0x30 else { return nil }
+        var off = 0
+        if let first = derTLV(tbs.value, 0), first.tag == 0xA0 { off = first.next }
+        guard let serial = derTLV(tbs.value, off), serial.tag == 0x02 else { return nil }
+        off = serial.next
+        guard let sig = derTLV(tbs.value, off), sig.tag == 0x30 else { return nil }
+        off = sig.next
+        guard let issuer = derTLV(tbs.value, off), issuer.tag == 0x30 else { return nil }
+        off = issuer.next
+        guard let subject = derTLV(tbs.value, off), subject.tag == 0x30 else { return nil }
+        let cnOID: [UInt8] = [0x55, 0x04, 0x03]
+        var so = 0
+        while so < subject.value.count {
+            guard let rdn = derTLV(subject.value, so), rdn.tag == 0x30 else { break }
+            so = rdn.next
+            var ro = 0
+            while ro < rdn.value.count {
+                guard let set = derTLV(rdn.value, ro), set.tag == 0x31 else { break }
+                ro = set.next
+                var ao = 0
+                while ao < set.value.count {
+                    guard let atv = derTLV(set.value, ao), atv.tag == 0x30 else { break }
+                    ao = atv.next
+                    guard let oid = derTLV(atv.value, 0) else { break }
+                    if oid.value == cnOID, let v = derTLV(atv.value, oid.next) {
+                        if let s = derString(v.tag, v.value), !s.isEmpty { return s }
+                    }
+                }
+            }
+        }
+        return nil
+    }
+}
+
+extension Data {
+    /// First 16 hex chars of the SHA-256 digest — a stable, short display
+    /// fallback when the certificate has no parseable Common Name.
+    func sha256Fingerprint16() -> String {
+        let h = SHA256.hash(data: self)
+        return h.prefix(8).map { String(format: "%02x", $0) }.joined()
     }
 }
