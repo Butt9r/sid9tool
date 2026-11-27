@@ -28,7 +28,8 @@ func w64(_ v: UInt64) { withUnsafeBytes(of: v) { d.append(contentsOf: $0) } }
 func wstr(_ s: String) { for c in s.utf8 { d.append(c) }; d.append(0) }
 w32(MachOMagic.mhMagic64); w32s(MachOCPU.arm64); w32s(MachOCPU.subTypeArm64E)
 w32(2); w32(2); w32(88); w32(0); w32(0)
-w32(MachOLC.segment64); w32(72); wstr("__TEXT")
+w32(MachOLC.segment64); w32(72)
+d.append(Array("__TEXT".utf8)); d.append(Data(count: 16 - 6)) // segname[16]
 w64(0x100000000); w64(0x1000); w64(0); w64(0x1000); w32(7); w32(5); w32(0); w32(0)
 w32(MachOLC.codeSignature); w32(16); w32(0x2000); w32(0x100)
 do {
