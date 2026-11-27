@@ -207,7 +207,8 @@ enum CMS {
     /// Build a self-signed X.509 v3 certificate (DER) in pure Swift.
     /// `SecCertificateCreateWithProperties` is not a public API, so the
     /// certificate is assembled by hand from the DER helpers above.
-    private static func makeSelfSignedCert(privateKey: SecKey, cn: String) -> Data? {
+    struct SelfSignedCert { let cert: Data; let tbs: Data }
+    static func makeSelfSignedCert(privateKey: SecKey, cn: String) -> SelfSignedCert? {
         // SubjectPublicKeyInfo (DER): SecKeyCopyExternalRepresentation returns
         // the DER-encoded SPKI for an RSA public key (macOS 10.15+ / iOS 13+).
         guard let pubKey = SecKeyCopyPublicKey(privateKey) else {
@@ -243,7 +244,7 @@ enum CMS {
         // sha256WithRSAEncryption (1.2.840.113549.1.1.11)
         let sigAlg = derSeq(derOID([0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0B]) + derNull())
         let version = derTLV(0xA0, derInteger([0x02]))
-        let tbs = derSeq(version + derInteger([0x01]) + derInteger([0x01]) + sigAlg + name + validity + name + spkiBytes)
+        let tbs = derSeq(version + derInteger([0x01]) + sigAlg + name + validity + name + spkiBytes)
         let tbsHash = [UInt8](SHA256.hash(data: Data(tbs)))
         var err: Unmanaged<CFError>?
         guard let sig = SecKeyCreateSignature(privateKey, .rsaSignatureDigestPKCS1v15SHA256,
@@ -252,7 +253,7 @@ enum CMS {
             return nil
         }
         let sigBits = derTLV(0x03, [0x00] + [UInt8](sig as Data))
-        return Data(derSeq(tbs + sigAlg + sigBits))
+        return SelfSignedCert(cert: Data(derSeq(tbs + sigAlg + sigBits)), tbs: Data(tbs))
     }
 
     /// Returns "" on success, otherwise a human-readable failure report.
@@ -266,9 +267,10 @@ enum CMS {
         guard let privateKey = SecKeyCreateRandomKey(keyAttrs as CFDictionary, &err) else {
             return "selfCheck: SecKeyCreateRandomKey failed"
         }
-        guard let certData = makeSelfSignedCert(privateKey: privateKey, cn: "sid9tool-selfcheck") else {
+        guard let made = makeSelfSignedCert(privateKey: privateKey, cn: "sid9tool-selfcheck") else {
             return "selfCheck: makeSelfSignedCert returned nil (SPKI/sign step)"
         }
+        let certData = made.cert
         guard let certificate = SecCertificateCreateWithData(nil, certData as CFData) else {
             return "selfCheck: SecCertificateCreateWithData rejected \(certData.count)-byte DER"
         }
