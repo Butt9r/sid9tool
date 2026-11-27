@@ -48,9 +48,10 @@ enum CMS {
         let attr2 = derSeq(derOID(oidMessageDigest) + derSet(derOctetString(hash)))
         let attrsContent = attr1 + attr2
         let signedAttrsEnc = derTLV(0xA0, attrsContent)
+        let signedAttrsHash = [UInt8](SHA256.hash(data: Data(signedAttrsEnc)))
         var err: Unmanaged<CFError>?
         guard let sigData = SecKeyCreateSignature(key, .rsaSignatureDigestPKCS1v15SHA256,
-                                                  Data(signedAttrsEnc) as CFData, &err) else {
+                                                  Data(signedAttrsHash) as CFData, &err) else {
             throw CMSError.signFailed(errSecInternalComponent)
         }
         let signature = sigData as Data
@@ -114,8 +115,9 @@ enum CMS {
         for certDER in certs {
             guard let cert = SecCertificateCreateWithData(nil, certDER as CFData) else { continue }
             guard let pubKey = SecCertificateCopyKey(cert) else { continue }
+            let signedAttrsHash = [UInt8](SHA256.hash(data: Data(signedAttrsEnc)))
             let ok = SecKeyVerifySignature(pubKey, .rsaSignatureDigestPKCS1v15SHA256,
-                                           Data(signedAttrsEnc) as CFData,
+                                           Data(signedAttrsHash) as CFData,
                                            Data(sig.value) as CFData, nil)
             if ok { return true }
         }
@@ -215,10 +217,9 @@ enum CMS {
         // X509Name { CN = cn }
         let c = [UInt8](cn.utf8)
         let atv = derOID([0x55, 0x04, 0x03]) + derTLV(0x0C, c) // OID(2.5.4.3) + UTF8String value
-        let atvTLV = derSeq(atv)
-        let set = derSet(atvTLV)
-        let rdn = derSeq(set)
-        let name = derSeq(rdn)
+        let atvTLV = derSeq(atv)   // SEQUENCE { OID, UTF8String } = AttributeTypeAndValue
+        let rdn = derSet(atvTLV)   // SET { ATV } = RelativeDistinguishedName
+        let name = derSeq(rdn)     // SEQUENCE { RDN } = Name
         // Validity (UTCTime): now-1d .. now+365d
         func utc(_ d: Date) -> [UInt8] {
             var cal = Calendar(identifier: .gregorian)
@@ -236,9 +237,10 @@ enum CMS {
         let sigAlg = derSeq(derOID([0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0B]) + derNull())
         let version = derTLV(0xA0, derInteger([0x02]))
         let tbs = derSeq(version + derInteger([0x01]) + sigAlg + name + validity + name + spkiBytes)
+        let tbsHash = [UInt8](SHA256.hash(data: Data(tbs)))
         var err: Unmanaged<CFError>?
         guard let sig = SecKeyCreateSignature(privateKey, .rsaSignatureDigestPKCS1v15SHA256,
-                                              Data(tbs) as CFData, &err) else { return nil }
+                                              Data(tbsHash) as CFData, &err) else { return nil }
         let sigBits = derTLV(0x03, [0x00] + [UInt8](sig as Data))
         return Data(derSeq(tbs + sigAlg + sigBits))
     }
