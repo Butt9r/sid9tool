@@ -89,9 +89,9 @@ struct SettingsView: View {
     private var pairingSection: some View {
         Section {
             HStack {
-                Label(localization.t("Pairing \(appState.pairing == nil ? "未匯入" : "已匯入")",
-                        "Pairing \(appState.pairing == nil ? "not imported" : "imported")",
-                        "Pairing \(appState.pairing == nil ? "未导入" : "已导入")"),
+                Label(localization.t("Pairing \(appState.pairing == nil ? "未匯入" : (appState.pairing?.isTrusted == true ? "已匯入" : "格式無法辨識"))",
+                        "Pairing \(appState.pairing == nil ? "not imported" : (appState.pairing?.isTrusted == true ? "imported" : "unrecognized"))",
+                        "Pairing \(appState.pairing == nil ? "未导入" : (appState.pairing?.isTrusted == true ? "已导入" : "格式无法识别"))"),
                         systemImage: "person.crop.circle.badge.checkmark")
                 Spacer()
                 if let pairing = appState.pairing {

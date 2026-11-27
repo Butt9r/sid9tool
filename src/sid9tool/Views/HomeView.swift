@@ -13,7 +13,7 @@ struct HomeView: View {
         let vpn = TunnelService.currentStatus(endpoint: appState.container.tunnelEndpoint)
         let certOK = appState.certificate != nil && appState.certificate?.isExpired == false
         return [
-            (localization.t("Pairing 檔案", "Pairing file", "Pairing 文件"), appState.pairing != nil),
+            (localization.t("Pairing 檔案", "Pairing file", "Pairing 文件"), appState.pairing?.isTrusted == true),
             (localization.t("Apple ID + 憑證", "Apple ID + certificate", "Apple ID + 证书"), certOK),
             (localization.t("LocalDevVPN (JIT-less)", "LocalDevVPN (JIT-less)", "LocalDevVPN (JIT-less)"),
              !appState.container.jitlessMode || vpn.vpnConnected),
@@ -34,10 +34,19 @@ struct HomeView: View {
         if appState.certificate == nil { return "未导入" }
         return appState.certificate?.isExpired == true ? "过期" : "有效"
     }
-    /// Pairing 狀態文字（供卡片用）。
-    private var pairingStatus: String { appState.pairing == nil ? "未匯入" : "已就緒" }
-    private var pairingStatusEN: String { appState.pairing == nil ? "missing" : "ready" }
-    private var pairingStatusHans: String { appState.pairing == nil ? "未导入" : "已就绪" }
+    /// Pairing 狀態文字（供卡片用）：三態（未匯入 / 格式無法辨識 / 已就緒）。
+    private var pairingStatus: String {
+        guard let pairing = appState.pairing else { return "未匯入" }
+        return pairing.isTrusted ? "已就緒" : "格式無法辨識"
+    }
+    private var pairingStatusEN: String {
+        guard let pairing = appState.pairing else { return "missing" }
+        return pairing.isTrusted ? "ready" : "unrecognized"
+    }
+    private var pairingStatusHans: String {
+        guard let pairing = appState.pairing else { return "未导入" }
+        return pairing.isTrusted ? "已就绪" : "格式无法识别"
+    }
     /// 憑證到期天數。
     private var certDays: Int { appState.certificate?.daysUntilExpiry ?? 0 }
 
@@ -73,10 +82,10 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 10) {
                 SectionHeader(title: "Pairing", systemImage: "link")
                 HStack(spacing: 8) {
-                    StatusChip(title: localization.t("Pairing \(appState.pairing == nil ? "未匯入" : "已就緒")",
-                               "Pairing \(appState.pairing == nil ? "missing" : "ready")",
-                               "Pairing \(appState.pairing == nil ? "未导入" : "已就绪")"),
-                               isPositive: appState.pairing != nil)
+                    StatusChip(title: localization.t("Pairing \(pairingStatus)",
+                                                   "Pairing \(pairingStatusEN)",
+                                                   "Pairing \(pairingStatusHans)"),
+                               isPositive: appState.pairing?.isTrusted == true)
                     if let udid = appState.pairing?.deviceUDID {
                         Text(udid.prefix(12))
                             .font(.caption)
@@ -89,6 +98,14 @@ struct HomeView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                }
+                if appState.pairing != nil && appState.pairing?.isTrusted == false {
+                    Label(localization.t("無法辨識 UDID，請確認 Pairing 檔來源",
+                                        "Could not resolve a valid UDID; check the pairing file source",
+                                        "无法识别 UDID，请确认 Pairing 文件来源"),
+                          systemImage: "exclamationmark.triangle")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
                 }
             }
         }
@@ -160,11 +177,18 @@ struct HomeView: View {
                 SectionHeader(title: localization.t("sid9tool 自身安裝", "sid9tool self-install", "sid9tool 自身安装"),
                               systemImage: "hammer")
                 VStack(spacing: 6) {
-                    ForEach(installSteps, id: \.0) { step in
+                    let pairingUntrusted = appState.pairing != nil && appState.pairing?.isTrusted == false
+                    ForEach(Array(installSteps.enumerated()), id: \.element.0) { index, step in
                         HStack(spacing: 8) {
-                            Image(systemName: step.1 ? "checkmark.circle.fill" : "circle")
-                                .foregroundStyle(step.1 ? Color.green : .secondary)
-                                .font(.caption)
+                            if index == 0 && pairingUntrusted {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(.orange)
+                                    .font(.caption)
+                            } else {
+                                Image(systemName: step.1 ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(step.1 ? Color.green : .secondary)
+                                    .font(.caption)
+                            }
                             Text(step.0).font(.caption)
                         }
                     }

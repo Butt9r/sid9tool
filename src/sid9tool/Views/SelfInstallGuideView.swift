@@ -53,7 +53,7 @@ struct SelfInstallGuideView: View {
                 ) {
                     step(1,
                          localization.t("匯入 Pairing 檔案", "Import pairing file", "导入 Pairing 文件"),
-                         done: appState.pairing != nil) { pairingImporter = true }
+                         done: appState.pairing?.isTrusted == true) { pairingImporter = true }
                     step(2,
                          localization.t("匯入 Apple ID 憑證 (.p12 + .mobileprovision)",
                                         "Import Apple ID certificate (.p12 + .mobileprovision)",
@@ -142,7 +142,11 @@ struct SelfInstallGuideView: View {
         let profile = PairingService().importPairing(from: url)
         if let profile {
             appState.pairing = profile
-            message = localization.t("Pairing 已就緒", "Pairing ready", "Pairing 已就绪")
+            message = profile.isTrusted
+                ? localization.t("Pairing 已就緒", "Pairing ready", "Pairing 已就绪")
+                : localization.t("已匯入，但格式無法辨識（未解析出有效 UDID）",
+                                 "Imported, but format unrecognized (no valid UDID resolved)",
+                                 "已导入，但格式无法识别（未解析出有效 UDID）")
         } else {
             message = localization.t("Pairing 匯入失敗", "Pairing import failed", "Pairing 导入失败")
         }
