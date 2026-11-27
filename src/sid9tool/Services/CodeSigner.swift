@@ -217,7 +217,7 @@ public enum CodeSigner {
         var blob = Data()
         let cdiOffset = 12 + 8
         appendU32(&blob, Magic.superBlob)
-        appendU32(&blob, UInt32(cdiOffset) + codeDirectory.blob.count)
+        appendU32(&blob, UInt32(cdiOffset) + UInt32(codeDirectory.blob.count))
         appendU32(&blob, 1) // sb_count
         appendU32(&blob, 0x0100000C) // cputype: CPU_TYPE_ARM64
         appendU32(&blob, 0x00000002) // cpusubtype: CPU_SUBTYPE_ARM64E
