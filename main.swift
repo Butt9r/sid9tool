@@ -20,6 +20,13 @@ if !csReport.isEmpty {
 }
 print("CodeSigner self-check: OK")
 
+let cmsReport = CMS.selfCheck()
+if !cmsReport.isEmpty {
+    print("CMS self-check FAILED: \(cmsReport)")
+    exit(1)
+}
+print("CMS self-check: OK")
+
 // P1-3: list load commands of a synthetic thin arm64e binary.
 var d = Data()
 func w32(_ v: UInt32) { withUnsafeBytes(of: v) { d.append(contentsOf: $0) } }
