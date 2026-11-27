@@ -206,11 +206,11 @@ enum CMS {
     /// `SecCertificateCreateWithProperties` is not a public API, so the
     /// certificate is assembled by hand from the DER helpers above.
     private static func makeSelfSignedCert(privateKey: SecKey, cn: String) -> Data? {
-        // SubjectPublicKeyInfo (DER): for a *public* key, kSecAttrKeyValue is
-        // the DER-encoded SPKI (private-key form is documented differently).
-        guard let pubKey = SecKeyCopyPublicKey(privateKey),
-              let attrs = SecKeyCopyAttributes(pubKey) as? [String: Any],
-              let spki = attrs[kSecAttrKeyValue as String] as? Data else { return nil }
+        // SubjectPublicKeyInfo (DER): SecKeyCopyExternalRepresentation returns
+        // the DER-encoded SPKI for an RSA public key (macOS 10.15+ / iOS 13+).
+        guard let pubKey = SecKeyCopyPublicKey(privateKey) else { return nil }
+        var repErr: Unmanaged<CFError>?
+        guard let spki = SecKeyCopyExternalRepresentation(pubKey, &repErr) else { return nil }
         let spkiBytes = [UInt8](spki)
         // X509Name { CN = cn }
         let c = [UInt8](cn.utf8)
@@ -221,7 +221,9 @@ enum CMS {
         let name = [UInt8]([0x30, UInt8(rdn.count)] + rdn)
         // Validity (UTCTime): now-1d .. now+365d
         func utc(_ d: Date) -> [UInt8] {
-            let p = Calendar(identifier: .utc).dateComponents(
+            var cal = Calendar(identifier: .gregorian)
+            cal.timeZone = TimeZone(identifier: "UTC") ?? .current
+            let p = cal.dateComponents(
                 [.year, .month, .day, .hour, .minute, .second], from: d)
             let s = String(format: "%02d%02d%02d%02d%02d%02dZ",
                            p.year % 100, p.month, p.day, p.hour, p.minute, p.second)
