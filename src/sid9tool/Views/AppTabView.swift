@@ -7,6 +7,11 @@ struct AppTabView: View {
     @EnvironmentObject var localization: LocalizationService
     @State private var importing = false
     @State private var showAdvanced = false
+    @State private var appToDelete: SideloadedApp?
+    @State private var showDeleteConfirmation = false
+
+    /// P0-6: shared instance so container removal uses the on-disk manifest.
+    @StateObject private var containerManager = ContainerManager()
 
     private var advancedSummary: String {
         let a = appState.advanced
@@ -25,14 +30,34 @@ struct AppTabView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 14) {
+            List {
+                Section {
                     slotHeader
-                    listSection
+                        .listRowSeparator(.hidden)
                 }
-                .padding()
+                Section {
+                    if appState.apps.isEmpty {
+                        Text(localization.t("尚未簽名任何 App", "No signed apps yet", "尚未签名任何 App"))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .listRowSeparator(.hidden)
+                    } else {
+                        ForEach(appState.apps) { app in
+                            AppRow(app: app)
+                                .onMove { offsets, destination in
+                                    appState.moveApp(from: offsets, to: destination)
+                                }
+                                .onDelete { indexSet in
+                                    if let index = indexSet.first, index < appState.apps.count {
+                                        appToDelete = appState.apps[index]
+                                        showDeleteConfirmation = true
+                                    }
+                                }
+                        }
+                    }
+                }
             }
-            .background(Color(.systemGroupedBackground))
+            .listStyle(.insetGrouped)
             .navigationTitle("App")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -51,6 +76,28 @@ struct AppTabView: View {
                     }
                     .accessibilityLabel(localization.t("高級安裝設定", "Advanced Install Settings", "高级安装设置"))
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    EditButton()
+                }
+            }
+            .confirmationDialog(
+                localization.t("移除容器", "Remove container", "移除容器"),
+                isPresented: $showDeleteConfirmation,
+                presenting: appToDelete
+            ) { app in
+                Button(
+                    localization.t("移除", "Remove", "移除"),
+                    role: .destructive
+                ) {
+                    deleteApp(app)
+                }
+                Button(localization.t("取消", "Cancel", "取消"), role: .cancel) {}
+            } message: { app in
+                Text(localization.t(
+                    "將移除「\(app.name)」並釋放一個 slot，同時刪除其容器目錄。",
+                    "This removes \"\(app.name)\" and frees a slot, and deletes its container directory.",
+                    "这将移除“\(app.name)”并释放一个 slot，同时删除其容器目录。"
+                ))
             }
             .sheet(isPresented: $importing) {
                 ImportIPASheet()
@@ -62,49 +109,37 @@ struct AppTabView: View {
     }
 
     private var slotHeader: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Label(localization.t(
-                        "已用 \(appState.slot.occupiedSlots)/\(appState.slot.totalSlots) slot",
-                        "Slots \(appState.slot.occupiedSlots)/\(appState.slot.totalSlots)",
-                        "已用 \(appState.slot.occupiedSlots)/\(appState.slot.totalSlots) slot"
-                    ), systemImage: "cube.box.fill")
-                        .font(.subheadline.weight(.medium))
-                    Spacer()
-                }
-                if !advancedSummary.isEmpty {
-                    HStack(spacing: 6) {
-                        Image(systemName: "slider.horizontal.3")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(advancedSummary)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label(localization.t(
+                    "已用 \(appState.slot.occupiedSlots)/\(appState.slot.totalSlots) slot",
+                    "Slots \(appState.slot.occupiedSlots)/\(appState.slot.totalSlots)",
+                    "已用 \(appState.slot.occupiedSlots)/\(appState.slot.totalSlots) slot"
+                ), systemImage: "cube.box.fill")
+                    .font(.subheadline.weight(.medium))
+                Spacer()
+            }
+            if !advancedSummary.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(advancedSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
             }
         }
     }
 
-    private var listSection: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: 8) {
-                SectionHeader(title: localization.t("容器清單", "Containers", "容器清单"), systemImage: "tray.full.fill")
-                if appState.apps.isEmpty {
-                    Text(localization.t("尚未簽名任何 App", "No signed apps yet", "尚未签名任何 App"))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(appState.apps) { app in
-                        AppRow(app: app)
-                        if app.id != appState.apps.last?.id {
-                            Divider()
-                        }
-                    }
-                }
-            }
+    /// P0-6: remove the app entry (frees a slot) and delete its container
+    /// directory via `ContainerManager.removeContainer`.
+    private func deleteApp(_ app: SideloadedApp) {
+        let bundleId = app.bundleId
+        appState.removeApp(app)
+        Task { @MainActor in
+            containerManager.removeContainer(bundleId: bundleId)
         }
     }
 }

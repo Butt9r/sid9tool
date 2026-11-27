@@ -88,7 +88,8 @@ final class AppState: ObservableObject {
 
     func removeApp(_ app: SideloadedApp) {
         apps.removeAll { $0.id == app.id }
-        if slot.occupiedSlots > 1 { slot.occupiedSlots -= 1 }
+        // P0-6: freeing the last container must also free its slot (down to 0).
+        slot.occupiedSlots = max(0, slot.occupiedSlots - 1)
     }
 
     func moveApp(from source: IndexSet, to destination: Int) {
