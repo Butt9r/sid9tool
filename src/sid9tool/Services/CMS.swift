@@ -214,7 +214,7 @@ enum CMS {
         let spkiBytes = [UInt8](spki as Data)
         // X509Name { CN = cn }
         let c = [UInt8](cn.utf8)
-        let atv = [0x55, 0x04, 0x03] + derTLV(0x0C, c) // OID + UTF8String value
+        let atv = derOID([0x55, 0x04, 0x03]) + derTLV(0x0C, c) // OID(2.5.4.3) + UTF8String value
         let atvTLV = derSeq(atv)
         let set = derSet(atvTLV)
         let rdn = derSeq(set)
