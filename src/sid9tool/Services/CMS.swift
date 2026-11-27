@@ -27,10 +27,8 @@ enum CMS {
         var privKey: SecKey?
         guard SecIdentityCopyPrivateKey(identity, &privKey) == errSecSuccess,
               let key = privKey else { throw CMSError.signFailed(errSecAuthFailed) }
-        guard let certDER = SecCertificateCopyData(cert) else {
-            throw CMSError.signFailed(errSecInternalComponent)
-        }
-        let cb = [UInt8](certDER)
+        let certDER = SecCertificateCopyData(cert)
+        let cb = [UInt8](certDER as Data)
         guard let outer = tlv(cb, 0), outer.tag == 0x30,
               let tbs = tlv(outer.value, 0), tbs.tag == 0x30 else {
             throw CMSError.signFailed(errSecInternalComponent)
@@ -50,12 +48,12 @@ enum CMS {
         let attr2 = derSeq(derOID(oidMessageDigest) + derSet(derOctetString(hash)))
         let attrsContent = attr1 + attr2
         let signedAttrsEnc = derTLV(0xA0, attrsContent)
-        var sigData: Data?
-        let s2 = SecKeyCreateSignature(key, .rsaSignatureDigestPKCS1v15SHA256,
-                                       Data(signedAttrsEnc) as CFData, &sigData)
-        guard s2 == errSecSuccess, let signature = sigData else {
-            throw CMSError.signFailed(s2)
+        var err: Unmanaged<CFError>?
+        guard let sigData = SecKeyCreateSignature(key, .rsaSignatureDigestPKCS1v15SHA256,
+                                                  Data(signedAttrsEnc) as CFData, &err) else {
+            throw CMSError.signFailed(errSecInternalComponent)
         }
+        let signature = sigData as Data
         let digestAlg = derSeq(derOID(oidSHA256) + derNull())
         let sigAlg = derSeq(derOID(oidRSA) + derNull())
         let ias = derSeq(derSeq(issuer.value) + derInteger(serial.value))
@@ -111,13 +109,14 @@ enum CMS {
         let attr2 = derSeq(derOID(oidMessageDigest) + derSet(derOctetString(hash)))
         let signedAttrsEnc = derTLV(0xA0, attr1 + attr2)
         // Get public key from embedded cert
-        guard let certs = extractCertificates(from: data), !certs.isEmpty else { return false }
+        let certs = extractCertificates(from: data)
+        guard !certs.isEmpty else { return false }
         for certDER in certs {
             guard let cert = SecCertificateCreateWithData(nil, certDER as CFData) else { continue }
             guard let pubKey = SecCertificateCopyKey(cert) else { continue }
             let ok = SecKeyVerifySignature(pubKey, .rsaSignatureDigestPKCS1v15SHA256,
                                            Data(signedAttrsEnc) as CFData,
-                                           Data(sig.value) as CFData)
+                                           Data(sig.value) as CFData, nil)
             if ok { return true }
         }
         return false
