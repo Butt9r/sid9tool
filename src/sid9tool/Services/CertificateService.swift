@@ -94,11 +94,10 @@ final class CertificateService {
 
         // SecPKCS12Import already stored the identity in the default keychain.
         var certName = ""
-        let cnKey = "CN" as CFString
-        if let values = SecCertificateCopyValues(cert, [cnKey] as CFArray, nil) as? [AnyHashable: Any] {
-            if let cn = values["CN"] as? String {
-                certName = cn
-            }
+        // SecCertificateCopyName is available on iOS (unlike SecCertificateCopyValues /
+        // SecCertificateCopySubjectAttributes, which are not in the iOS SDK).
+        if let name = SecCertificateCopyName(cert) as String? {
+            certName = name
         }
         return (certName, identity)
     }
