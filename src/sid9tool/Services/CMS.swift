@@ -243,7 +243,7 @@ enum CMS {
         // sha256WithRSAEncryption (1.2.840.113549.1.1.11)
         let sigAlg = derSeq(derOID([0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0B]) + derNull())
         let version = derTLV(0xA0, derInteger([0x02]))
-        let tbs = derSeq(version + derInteger([0x01]) + sigAlg + name + validity + name + spkiBytes)
+        let tbs = derSeq(version + derInteger([0x01]) + derInteger([0x01]) + sigAlg + name + validity + name + spkiBytes)
         let tbsHash = [UInt8](SHA256.hash(data: Data(tbs)))
         var err: Unmanaged<CFError>?
         guard let sig = SecKeyCreateSignature(privateKey, .rsaSignatureDigestPKCS1v15SHA256,
