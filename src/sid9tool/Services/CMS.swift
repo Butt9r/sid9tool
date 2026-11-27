@@ -211,7 +211,7 @@ enum CMS {
         guard let pubKey = SecKeyCopyPublicKey(privateKey) else { return nil }
         var repErr: Unmanaged<CFError>?
         guard let spki = SecKeyCopyExternalRepresentation(pubKey, &repErr) else { return nil }
-        let spkiBytes = [UInt8](spki)
+        let spkiBytes = [UInt8](spki as Data)
         // X509Name { CN = cn }
         let c = [UInt8](cn.utf8)
         let atv = [0x55, 0x04, 0x03] + c
@@ -226,7 +226,7 @@ enum CMS {
             let p = cal.dateComponents(
                 [.year, .month, .day, .hour, .minute, .second], from: d)
             let s = String(format: "%02d%02d%02d%02d%02d%02dZ",
-                           p.year % 100, p.month, p.day, p.hour, p.minute, p.second)
+                           (p.year ?? 0) % 100, p.month ?? 0, p.day ?? 0, p.hour ?? 0, p.minute ?? 0, p.second ?? 0)
             return [UInt8](s.utf8)
         }
         let now = Date()
