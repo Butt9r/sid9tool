@@ -87,6 +87,11 @@ final class Archive {
             let target = dest.appendingPathComponent(name)
             try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
             try out.write(to: target)
+            // P0-7: restore Unix permissions from the ZIP entry's external attributes
+            let unixMode = Int((entry.externalAttributes >> 16) & 0xFFFF)
+            if unixMode != 0 {
+                try? FileManager.default.setAttributes([FileAttributeKey.posixPermissions: unixMode & 0o7777], ofItemAtPath: target.path)
+            }
         }
     }
 
@@ -98,6 +103,8 @@ final class Archive {
         var compressedSize: Int
         var uncompressedSize: Int
         var localHeaderOffset: Int
+        /// P0-7: Unix file mode in upper 16 bits (e.g. 0o100755 → 0x81ED0000).
+        var externalAttributes: UInt32
     }
 
     private static func findEOCD(_ d: Data) -> Int? {
@@ -157,7 +164,9 @@ final class Archive {
                 }
             }
             let name = String(bytes: d[(i + 46)..<(i + 46 + nameLen)], encoding: .utf8) ?? "entry_\(entries.count)"
-            entries.append(Entry(name: name, compressionMethod: method, compressedSize: comp, uncompressedSize: unc, localHeaderOffset: lfo))
+            // P0-7: offset 38 = external attrs; upper 16 bits carry the Unix file mode
+            let externalAttrs = u32(d, i + 38)
+            entries.append(Entry(name: name, compressionMethod: method, compressedSize: comp, uncompressedSize: unc, localHeaderOffset: lfo, externalAttributes: externalAttrs))
             i += 46 + nameLen + extraLen + commentLen
         }
         if entries.isEmpty { throw ZipError.badCentralDirectory }
