@@ -45,16 +45,16 @@ struct AppTabView: View {
                 } else {
                     Section {
                         ForEach(appState.apps) { app in
-                            AppRow(app: app)
-                                .onMove { offsets, destination in
-                                    appState.moveApp(from: offsets, to: destination)
-                                }
-                                .onDelete { indexSet in
-                                    if let index = indexSet.first, index < appState.apps.count {
-                                        appToDelete = appState.apps[index]
-                                        showDeleteConfirmation = true
-                                    }
-                                }
+                            appRow(app)
+                        }
+                        .onMove { offsets, destination in
+                            appState.moveApp(from: offsets, to: destination)
+                        }
+                        .onDelete { indexSet in
+                            if let index = indexSet.first, index < appState.apps.count {
+                                appToDelete = appState.apps[index]
+                                showDeleteConfirmation = true
+                            }
                         }
                     }
                 }
@@ -144,13 +144,12 @@ struct AppTabView: View {
             containerManager.removeContainer(bundleId: bundleId)
         }
     }
-}
 
-struct AppRow: View {
-    let app: SideloadedApp
-    @EnvironmentObject var localization: LocalizationService
-
-    var body: some View {
+    /// P0-6: row content. Kept as a `@ViewBuilder` method (not a separate
+    /// `struct AppRow: View`) so the `ForEach`'s row type is a plain view
+    /// and `.onMove` / `.onDelete` resolve without type-checker ambiguity.
+    @ViewBuilder
+    private func appRow(_ app: SideloadedApp) -> some View {
         HStack(spacing: 12) {
             AppIconView(name: app.name, size: 40)
             VStack(alignment: .leading, spacing: 3) {
