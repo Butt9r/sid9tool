@@ -9,7 +9,13 @@ struct SettingsView: View {
     @State private var showPairingPicker = false
     @State private var showP12Picker = false
     @State private var showProvisionPicker = false
+    @State private var pendingP12: P12ImportRequest?
     @State private var certNote: String?
+
+    private struct P12ImportRequest: Identifiable {
+        let id = UUID()
+        let url: URL
+    }
     @State private var vpnNIC = false
     @State private var endpointReachable = false
 
@@ -69,10 +75,31 @@ struct SettingsView: View {
                     if let url = urls.first { handleCertificateFile(url) }
                 }
             }
+            .sheet(item: $pendingP12) { req in
+                let url = req.url
+                P12PasswordSheet(onCancel: { pendingP12 = nil }) { password in
+                    pendingP12 = nil
+                    do {
+                        let (certName, _) = try CertificateService().importP12(at: url, password: password)
+                        appState.certificate?.certCommonName = certName
+                        appState.certificate?.p12ImportedAt = .now
+                        certNote = localization.t("已匯入 .p12（\(certName)）",
+                                                  ".p12 imported (\(certName))",
+                                                  "已导入 .p12（\(certName)）")
+                    } catch {
+                        certNote = error.localizedDescription
+                    }
+                }
+            }
         }
     }
 
     private func handleCertificateFile(_ url: URL) {
+        if url.pathExtension.lowercased() == "p12" {
+            // P1-1: .p12 needs its import password before we can read it.
+            pendingP12 = P12ImportRequest(url: url)
+            return
+        }
         let didAccess = url.startAccessingSecurityScopedResource()
         let profile = CertificateService().importFile(url)
         if didAccess { url.stopAccessingSecurityScopedResource() }
@@ -248,5 +275,43 @@ struct SettingsView: View {
         } header: {
             Text(localization.t("關於", "About", "关于"))
         }
+    }
+}
+
+/// P1-1: .p12 import password entry. The password is held only in memory.
+struct P12PasswordSheet: View {
+    @EnvironmentObject var localization: LocalizationService
+    @State private var password = ""
+    let onCancel: () -> Void
+    let onImport: (String) -> Void
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 16) {
+                SecureField(localization.t(".p12 密碼", ".p12 password", ".p12 密码"), text: $password)
+                    .textFieldStyle(.roundedBorder)
+                    .autocorrectionDisabled()
+                Text(localization.t("密碼僅在匯入時使用，不會被儲存。",
+                                   "The password is used only during import and is never stored.",
+                                   "密码仅在导入时使用，不会被保存。"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button(localization.t("匯入", "Import", "导入")) {
+                    onImport(password)
+                }
+                .disabled(password.isEmpty)
+            }
+            .padding()
+            .navigationTitle(localization.t("匯入 .p12", "Import .p12", "导入 .p12"))
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(localization.t("取消", "Cancel", "取消")) {
+                        onCancel()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }

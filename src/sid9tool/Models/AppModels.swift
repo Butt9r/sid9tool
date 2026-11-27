@@ -57,6 +57,8 @@ struct PairingProfile: Codable, Equatable {
 struct CertificateProfile: Codable, Equatable {
     var p12FileName: String
     var p12ImportedAt: Date
+    /// P1-1: Common Name of the .p12 signing certificate (display only).
+    var certCommonName: String?
     var provisionFileName: String?
     var provisionImportedAt: Date?
     var teamName: String?

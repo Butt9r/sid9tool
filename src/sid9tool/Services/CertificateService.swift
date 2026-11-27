@@ -33,12 +33,82 @@ final class CertificateService {
         )
     }
 
+    // MARK: - P1-1: password-protected .p12 import (SecPKCS12Import)
+
+    enum P12ImportError: LocalizedError, Equatable {
+        case fileNotFound
+        case badPassword
+        case noIdentity
+
+        /// Localized description (zh-Hant / en / zh-Hans) based on the persisted language.
+        var errorDescription: String? {
+            let saved = UserDefaults.standard.string(forKey: LocalizationService.storageKey)
+            let lang = saved.flatMap { AppLanguage(rawValue: $0) } ?? .zhHant
+            switch self {
+            case .fileNotFound:
+                return Self.t(lang, "找不到檔案", "File not found", "找不到文件")
+            case .badPassword:
+                return Self.t(lang, ".p12 密碼錯誤", "Wrong .p12 password", ".p12 密码错误")
+            case .noIdentity:
+                return Self.t(lang, "該 .p12 沒有簽章身分", "No signing identity in .p12", "该 .p12 没有签名身份")
+            }
+        }
+
+        private static func t(_ lang: AppLanguage, _ zhHant: String, _ en: String, _ zhHans: String) -> String {
+            switch lang {
+            case .zhHant: return zhHant
+            case .en: return en
+            case .zhHans: return zhHans
+            }
+        }
+    }
+
+    /// Import a password-protected .p12, extract the SecIdentity + SecCertificate,
+    /// store the identity in the Keychain, and return the certificate Common Name.
+    /// The password is used in memory only — it is never written to disk,
+    /// UserDefaults or the Keychain.
+    func importP12(at url: URL, password: String) throws -> (certName: String, identity: SecIdentity) {
+        let didAccess = url.startAccessingSecurityScopedResource()
+        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url) else { throw P12ImportError.fileNotFound }
+
+        let options: [CFString: Any] = [kSecImportExportPassphrase: password as CFString]
+
+        var result: CFArray?
+        let status = SecPKCS12Import(data as CFData, options as CFDictionary, &result)
+        guard status == errSecSuccess, let items = result else {
+            throw P12ImportError.badPassword
+        }
+
+        var identity: SecIdentity?
+        var cert: SecCertificate?
+        for item in items as! [AnyObject] {
+            if identity == nil, let id = item as? SecIdentity {
+                identity = id
+            } else if let c = item as? SecCertificate {
+                cert = c
+            }
+        }
+        guard let identity, let cert else { throw P12ImportError.noIdentity }
+
+        // SecPKCS12Import already stored the identity in the default keychain.
+        var certName = ""
+        if let attrs = SecCertificateCopySubjectAttributes(cert, .all) {
+            let dict = attrs as? [CFString: Any]
+            if let cn = dict?[kSecAttrCommonName] as? String {
+                certName = cn
+            }
+        }
+        return (certName, identity)
+    }
+
     /// Import a .p12 + .mobileprovision pair; returns a parsed profile.
     @MainActor
     func importCertificates(p12URL: URL, provisionURL: URL?) -> CertificateProfile? {
         var profile = CertificateProfile(
             p12FileName: p12URL.lastPathComponent,
             p12ImportedAt: .now,
+            certCommonName: nil,
             provisionFileName: provisionURL?.lastPathComponent,
             provisionImportedAt: provisionURL.map { _ in Date() },
             teamName: nil, teamID: nil, appID: nil,
