@@ -82,20 +82,21 @@ final class CertificateService {
 
         var identity: SecIdentity?
         var cert: SecCertificate?
-        for item in items as! [AnyObject] {
-            if identity == nil, let id = item as? SecIdentity {
-                identity = id
-            } else if let c = item as? SecCertificate {
-                cert = c
+        let typeSafe = items as! [AnyObject]
+        for item in typeSafe {
+            if identity == nil && CFGetTypeID(item) == SecIdentityGetTypeID() {
+                identity = item as! SecIdentity
+            } else if CFGetTypeID(item) == SecCertificateGetTypeID() {
+                cert = item as! SecCertificate
             }
         }
         guard let identity, let cert else { throw P12ImportError.noIdentity }
 
         // SecPKCS12Import already stored the identity in the default keychain.
         var certName = ""
-        if let attrs = SecCertificateCopySubjectAttributes(cert, .all) {
-            let dict = attrs as? [CFString: Any]
-            if let cn = dict?[kSecAttrCommonName] as? String {
+        let cnKey = "CN" as CFString
+        if let values = SecCertificateCopyValues(cert, [cnKey] as CFArray, nil) as? [AnyHashable: Any] {
+            if let cn = values["CN"] as? String {
                 certName = cn
             }
         }
