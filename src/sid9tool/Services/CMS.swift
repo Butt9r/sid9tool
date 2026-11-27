@@ -134,7 +134,7 @@ enum CMS {
         guard let oid = tlv(ci.value, 0), oid.tag == 0x06 else { return [] }
         off = oid.next
         // [0] SignedData (explicit)
-        guard let sd = tlv(ci.value, off), sd.tag == 0x0E else { return [] }
+        guard let sd = tlv(ci.value, off), sd.tag == 0xA0 else { return [] }
         var so = 0
         // version INTEGER
         if let v = tlv(sd.value, 0), v.tag == 0x02 { so = v.next }
@@ -148,7 +148,7 @@ enum CMS {
         var co = 0
         while co < c.value.count {
             guard let cert = tlv(c.value, co), cert.tag == 0x30 else { break }
-            certs.append(Data(cert.value))
+            certs.append(Data(Array(c.value[co..<cert.next])))
             co = cert.next
         }
         return certs
