@@ -315,13 +315,13 @@ enum MachO {
         d.append(Data(count: 0x2100 - d.count))
         do {
             let p = try parse(d)
-            guard p.header.isArm64e else { failures.append("arch not arm64e") }
-            guard p.loadCommands.count == 2 else { failures.append("expected 2 LC, got \(p.loadCommands.count)") }
-            guard p.codeSigOffset != nil else { failures.append("no code sig LC found") }
-            guard let info = codeSignatureInfo(p, in: d), info.dataoff == 0x2000, info.datasize == 0x100 else {
+            if !p.header.isArm64e { failures.append("arch not arm64e") }
+            if p.loadCommands.count != 2 { failures.append("expected 2 LC, got \(p.loadCommands.count)") }
+            if p.codeSigOffset == nil { failures.append("no code sig LC found") }
+            if let info = codeSignatureInfo(p, in: d), info.dataoff == 0x2000, info.datasize == 0x100 {} else {
                 failures.append("bad code sig info")
             }
-            guard let seg = p.segments.first, seg.segname == "__TEXT" else { failures.append("bad segment") }
+            if let seg = p.segments.first, seg.segname == "__TEXT" {} else { failures.append("bad segment") }
         } catch {
             failures.append("parse threw: \(error)")
         }
@@ -334,7 +334,7 @@ enum MachO {
         fat.append(d)
         do {
             let p = try parse(fat)
-            guard p.loadCommands.count == 2 else { failures.append("fat: expected 2 LC, got \(p.loadCommands.count)") }
+            if p.loadCommands.count != 2 { failures.append("fat: expected 2 LC, got \(p.loadCommands.count)") }
         } catch {
             failures.append("fat parse threw: \(error)")
         }
