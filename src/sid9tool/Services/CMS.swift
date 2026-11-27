@@ -49,8 +49,10 @@ enum CMS {
         let attrsContent = attr1 + attr2
         let signedAttrsEnc = derTLV(0xA0, attrsContent)
         var err: Unmanaged<CFError>?
+        // Digest variant: must pass the pre-computed 32-byte SHA-256 of signedAttrs.
+        let signedAttrsHash = [UInt8](SHA256.hash(data: Data(signedAttrsEnc)))
         guard let sigData = SecKeyCreateSignature(key, .rsaSignatureDigestPKCS1v15SHA256,
-                                                  Data(signedAttrsEnc) as CFData, &err) else {
+                                                  Data(signedAttrsHash) as CFData, &err) else {
             throw CMSError.signFailed(errSecInternalComponent)
         }
         let signature = sigData as Data
@@ -114,8 +116,9 @@ enum CMS {
         for certDER in certs {
             guard let cert = SecCertificateCreateWithData(nil, certDER as CFData) else { continue }
             guard let pubKey = SecCertificateCopyKey(cert) else { continue }
+            let signedAttrsHash = [UInt8](SHA256.hash(data: Data(signedAttrsEnc)))
             let ok = SecKeyVerifySignature(pubKey, .rsaSignatureDigestPKCS1v15SHA256,
-                                           Data(signedAttrsEnc) as CFData,
+                                           Data(signedAttrsHash) as CFData,
                                            Data(sig.value) as CFData, nil)
             if ok { return true }
         }
@@ -244,8 +247,10 @@ enum CMS {
         let version = derTLV(0xA0, derInteger([0x02]))
         let tbs = derSeq(version + derInteger([0x01]) + sigAlg + name + validity + name + spkiBytes)
         var err: Unmanaged<CFError>?
+        // Digest variant: must pass the pre-computed 32-byte SHA-256 of TBSCertificate.
+        let tbsHash = [UInt8](SHA256.hash(data: Data(tbs)))
         guard let sig = SecKeyCreateSignature(privateKey, .rsaSignatureDigestPKCS1v15SHA256,
-                                              Data(tbs) as CFData, &err) else {
+                                              Data(tbsHash) as CFData, &err) else {
             FileHandle.standardError.write("makeSelfSignedCert: SecKeyCreateSignature failed err=\(String(describing: err))\n".data(using: .utf8)!)
             return nil
         }
