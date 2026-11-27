@@ -35,13 +35,15 @@ struct AppTabView: View {
                     slotHeader
                         .listRowSeparator(.hidden)
                 }
-                Section {
-                    if appState.apps.isEmpty {
+                if appState.apps.isEmpty {
+                    Section {
                         Text(localization.t("尚未簽名任何 App", "No signed apps yet", "尚未签名任何 App"))
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .listRowSeparator(.hidden)
-                    } else {
+                    }
+                } else {
+                    Section {
                         ForEach(appState.apps) { app in
                             AppRow(app: app)
                                 .onMove { offsets, destination in
