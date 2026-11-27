@@ -210,10 +210,17 @@ enum CMS {
     private static func makeSelfSignedCert(privateKey: SecKey, cn: String) -> Data? {
         // SubjectPublicKeyInfo (DER): SecKeyCopyExternalRepresentation returns
         // the DER-encoded SPKI for an RSA public key (macOS 10.15+ / iOS 13+).
-        guard let pubKey = SecKeyCopyPublicKey(privateKey) else { return nil }
+        guard let pubKey = SecKeyCopyPublicKey(privateKey) else {
+            FileHandle.standardError.write("makeSelfSignedCert: SecKeyCopyPublicKey failed\n".data(using: .utf8)!)
+            return nil
+        }
         var repErr: Unmanaged<CFError>?
-        guard let spki = SecKeyCopyExternalRepresentation(pubKey, &repErr) else { return nil }
+        guard let spki = SecKeyCopyExternalRepresentation(pubKey, &repErr) else {
+            FileHandle.standardError.write("makeSelfSignedCert: SecKeyCopyExternalRepresentation failed err=\(String(describing: repErr))\n".data(using: .utf8)!)
+            return nil
+        }
         let spkiBytes = [UInt8](spki as Data)
+        FileHandle.standardError.write("makeSelfSignedCert: SPKI size=\(spkiBytes.count) firstByte=0x\(String(format: "%02X", spkiBytes.first ?? 0))\n".data(using: .utf8)!)
         // X509Name { CN = cn }
         let c = [UInt8](cn.utf8)
         let atv = derOID([0x55, 0x04, 0x03]) + derTLV(0x0C, c) // OID(2.5.4.3) + UTF8String value
@@ -240,7 +247,10 @@ enum CMS {
         let tbsHash = [UInt8](SHA256.hash(data: Data(tbs)))
         var err: Unmanaged<CFError>?
         guard let sig = SecKeyCreateSignature(privateKey, .rsaSignatureDigestPKCS1v15SHA256,
-                                              Data(tbsHash) as CFData, &err) else { return nil }
+                                              Data(tbsHash) as CFData, &err) else {
+            FileHandle.standardError.write("makeSelfSignedCert: SecKeyCreateSignature failed err=\(String(describing: err))\n".data(using: .utf8)!)
+            return nil
+        }
         let sigBits = derTLV(0x03, [0x00] + [UInt8](sig as Data))
         return Data(derSeq(tbs + sigAlg + sigBits))
     }
@@ -256,9 +266,11 @@ enum CMS {
         guard let privateKey = SecKeyCreateRandomKey(keyAttrs as CFDictionary, &err) else {
             return "selfCheck: SecKeyCreateRandomKey failed"
         }
-        guard let certData = makeSelfSignedCert(privateKey: privateKey, cn: "sid9tool-selfcheck"),
-              let certificate = SecCertificateCreateWithData(nil, certData as CFData) else {
-            return "selfCheck: self-signed certificate creation failed"
+        guard let certData = makeSelfSignedCert(privateKey: privateKey, cn: "sid9tool-selfcheck") else {
+            return "selfCheck: makeSelfSignedCert returned nil (SPKI/sign step)"
+        }
+        guard let certificate = SecCertificateCreateWithData(nil, certData as CFData) else {
+            return "selfCheck: SecCertificateCreateWithData rejected \(certData.count)-byte DER"
         }
         guard let id = SecIdentityCreate(nil, certificate, privateKey) else {
             return "selfCheck: SecIdentityCreate failed"
