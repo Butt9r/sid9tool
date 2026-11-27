@@ -331,7 +331,9 @@ enum MachO {
         func fw32(_ v: UInt32) { withUnsafeBytes(of: v) { fat.append(contentsOf: $0) } }
         func fw32s(_ v: Int32) { withUnsafeBytes(of: v) { fat.append(contentsOf: $0) } }
         fw32(MachOMagic.fatMagic); fw32(1)
-        fw32s(MachOCPU.arm64); fw32s(MachOCPU.subTypeArm64E); fw32(8); fw32(UInt32(d.count)); fw32(4)
+        // fat_arch entry: cputype, cpusubtype, offset, size, align (power of 2).
+        // Slice starts after fat_header(8) + 1 fat_arch(20) = 28; 28 is 4-byte aligned → align=2.
+        fw32s(MachOCPU.arm64); fw32s(MachOCPU.subTypeArm64E); fw32(28); fw32(UInt32(d.count)); fw32(2)
         fat.append(contentsOf: d)
         do {
             let p = try parse(fat)
