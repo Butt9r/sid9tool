@@ -48,6 +48,8 @@ jobs:
           openssl req -x509 -newkey rsa:2048 -keyout /tmp/sid9-key.pem -out /tmp/sid9-cert.pem -days 365 -nodes -subj "/CN=sid9tool-selfcheck" 2>/dev/null
           # -legacy: openssl 3.x defaults to AES-256-CBC, which macOS SecPKCS12Import cannot decrypt; 3DES keeps it importable.
           openssl pkcs12 -export -legacy -out /tmp/sid9.p12 -inkey /tmp/sid9-key.pem -in /tmp/sid9-cert.pem -password pass:selfcheck
+          # DER copy of the cert for the selfCheck (SecIdentityCopyCertificate is absent from the iOS SDK).
+          openssl x509 -outform der -in /tmp/sid9-cert.pem -out /tmp/sid9-cert.der
           swiftc -o selfcheck main.swift src/sid9tool/Services/MachO.swift src/sid9tool/Services/CodeSigner.swift src/sid9tool/Services/CMS.swift
           ./selfcheck
 

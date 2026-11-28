@@ -277,13 +277,16 @@ enum CMS {
         guard let id = identity else {
             return "selfCheck: PKCS#12 has no identity (imported \(itemCount) items)"
         }
-        // If no separate cert was imported, extract it from the identity.
+        // If no separate cert was imported, read the DER cert the CI step
+        // exported alongside the p12 (SecIdentityCopyCertificate is absent
+        // from the iOS SDK — see TODO.md 已試過 list).
         let certificate: SecCertificate
         if let c = cert {
             certificate = c
         } else {
-            guard let extracted = SecIdentityCopyCertificate(id) else {
-                return "selfCheck: cannot extract certificate from identity"
+            guard let derData = try? Data(contentsOf: URL(fileURLWithPath: "/tmp/sid9-cert.der")),
+                  let extracted = SecCertificateCreateWithData(nil, derData as CFData) else {
+                return "selfCheck: cannot load certificate (no separate cert, /tmp/sid9-cert.der missing)"
             }
             certificate = extracted
         }
