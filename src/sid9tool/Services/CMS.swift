@@ -24,10 +24,16 @@ enum CMS {
     /// Sign `content` with `identity` and return a CMS SignedData DER blob (RFC 5652).
     static func sign(identity: SecIdentity, cert: SecCertificate, content: Data,
                      contentType: [UInt8] = oidData) throws -> Data {
+        func dbg(_ m: String) { FileHandle.standardError.write("sign: \(m)\n".data(using: .utf8)!) }
+        dbg("before SecIdentityCopyPrivateKey")
         var privKey: SecKey?
-        guard SecIdentityCopyPrivateKey(identity, &privKey) == errSecSuccess,
-              let key = privKey else { throw CMSError.signFailed(errSecAuthFailed) }
+        let pkStatus = SecIdentityCopyPrivateKey(identity, &privKey)
+        dbg("SecIdentityCopyPrivateKey status=\(pkStatus) key=\(privKey != nil)")
+        guard pkStatus == errSecSuccess,
+              let key = privKey else { throw CMSError.signFailed(pkStatus) }
+        dbg("before SecCertificateCopyData")
         let certDER = SecCertificateCopyData(cert)
+        dbg("SecCertificateCopyData len=\(certDER.count)")
         let cb = [UInt8](certDER as Data)
         guard let outer = tlv(cb, 0), outer.tag == 0x30,
               let tbs = tlv(outer.value, 0), tbs.tag == 0x30 else {
@@ -51,10 +57,13 @@ enum CMS {
         var err: Unmanaged<CFError>?
         // Digest variant: must pass the pre-computed 32-byte SHA-256 of signedAttrs.
         let signedAttrsHash = [UInt8](SHA256.hash(data: Data(signedAttrsEnc)))
+        dbg("before SecKeyCreateSignature")
         guard let sigData = SecKeyCreateSignature(key, .rsaSignatureDigestPKCS1v15SHA256,
                                                   Data(signedAttrsHash) as CFData, &err) else {
+            dbg("SecKeyCreateSignature returned nil")
             throw CMSError.signFailed(errSecInternalComponent)
         }
+        dbg("SecKeyCreateSignature ok len=\(sigData.length)")
         let signature = sigData as Data
         let digestAlg = derSeq(derOID(oidSHA256) + derNull())
         let sigAlg = derSeq(derOID(oidRSA) + derNull())
