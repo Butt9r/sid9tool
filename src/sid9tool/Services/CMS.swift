@@ -275,9 +275,9 @@ enum CMS {
         var cert: SecCertificate?
         for item in items {
             if identity == nil, item is SecIdentity {
-                identity = item as? SecIdentity
+                identity = item as! SecIdentity
             } else if cert == nil, item is SecCertificate {
-                cert = item as? SecCertificate
+                cert = item as! SecCertificate
             }
         }
         guard let id = identity else {
