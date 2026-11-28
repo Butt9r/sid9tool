@@ -271,8 +271,15 @@ enum CMS {
             return "selfCheck: /tmp/sid9.p12 too small (\(p12Data.count) bytes) — openssl pkcs12 may have failed"
         }
         let options: [CFString: Any] = [kSecImportExportPassphrase: "selfcheck" as CFString]
+        // Pass an explicit keychain: with NULL, SecPKCS12Import uses a temporary
+        // keychain that is destroyed when the call returns, leaving the imported
+        // identity's private key dangling (SecIdentityCopyPrivateKey then segfaults).
+        var kc: SecKeychain?
+        guard SecKeychainCreate("selfcheck", 0, nil, false, nil, &kc) == errSecSuccess, let keychain = kc else {
+            return "selfCheck: SecKeychainCreate failed"
+        }
         var result: CFArray?
-        let status = SecPKCS12Import(p12Data as CFData, options as CFDictionary, &result)
+        let status = SecPKCS12Import(p12Data as CFData, options as CFDictionary, keychain, &result)
         guard status == errSecSuccess, let arr = result else {
             return "selfCheck: SecPKCS12Import status \(status)"
         }
