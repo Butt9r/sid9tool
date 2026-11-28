@@ -258,20 +258,26 @@ enum CMS {
         guard let p12Data = try? Data(contentsOf: p12URL) else {
             return "selfCheck: cannot read \(p12URL.path)"
         }
+        guard p12Data.count > 100 else {
+            return "selfCheck: /tmp/sid9.p12 too small (\(p12Data.count) bytes) — openssl pkcs12 may have failed"
+        }
         let options: [CFString: Any] = [kSecImportExportPassphrase: "selfcheck" as CFString]
         var result: CFArray?
         let status = SecPKCS12Import(p12Data as CFData, options as CFDictionary, &result)
-        guard status == errSecSuccess, let items = result else {
+        guard status == errSecSuccess, let arr = result else {
             return "selfCheck: SecPKCS12Import status \(status)"
         }
-        let itemCount = (items as! [AnyObject]).count
+        guard let items = arr as? [AnyObject] else {
+            return "selfCheck: SecPKCS12Import result not an array"
+        }
+        let itemCount = items.count
         var identity: SecIdentity?
         var cert: SecCertificate?
-        for item in items as! [AnyObject] {
+        for item in items {
             if identity == nil, item is SecIdentity {
-                identity = item as! SecIdentity
+                identity = item as? SecIdentity
             } else if cert == nil, item is SecCertificate {
-                cert = item as! SecCertificate
+                cert = item as? SecCertificate
             }
         }
         guard let id = identity else {
