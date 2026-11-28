@@ -33,7 +33,7 @@ enum CMS {
               let key = privKey else { throw CMSError.signFailed(pkStatus) }
         dbg("before SecCertificateCopyData")
         let certDER = SecCertificateCopyData(cert)
-        dbg("SecCertificateCopyData len=\(certDER.count)")
+        dbg("SecCertificateCopyData len=\((certDER as Data).count)")
         let cb = [UInt8](certDER as Data)
         guard let outer = tlv(cb, 0), outer.tag == 0x30,
               let tbs = tlv(outer.value, 0), tbs.tag == 0x30 else {
@@ -63,7 +63,7 @@ enum CMS {
             dbg("SecKeyCreateSignature returned nil")
             throw CMSError.signFailed(errSecInternalComponent)
         }
-        dbg("SecKeyCreateSignature ok len=\(sigData.length)")
+        dbg("SecKeyCreateSignature ok len=\((sigData as Data).count)")
         let signature = sigData as Data
         let digestAlg = derSeq(derOID(oidSHA256) + derNull())
         let sigAlg = derSeq(derOID(oidRSA) + derNull())
