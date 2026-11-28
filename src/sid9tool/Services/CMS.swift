@@ -178,6 +178,16 @@ enum CMS {
         guard p + len <= b.count else { return nil }
         return (tag, Array(b[p..<(p + len)]), p + len)
     }
+    /// Extract PKCS#1 RSAPrivateKey from PKCS#8 PrivateKeyInfo DER.
+    private static func extractPKCS1fromPKCS8(_ data: Data) -> Data? {
+        let b = [UInt8](data)
+        guard let outer = tlv(b, 0), outer.tag == 0x30 else { return nil }
+        let content = outer.value
+        guard let ver = tlv(content, 0), ver.tag == 0x02 else { return nil }
+        guard let alg = tlv(content, ver.next), alg.tag == 0x30 else { return nil }
+        guard let pk = tlv(content, alg.next), pk.tag == 0x04 else { return nil }
+        return Data(pk.value)
+    }
     // MARK: - DER helpers (in-memory, for selfCheck only)
 
     /// Minimal DER TLV encoder: tag byte + length + value.
@@ -261,18 +271,24 @@ enum CMS {
     /// Returns "" on success, otherwise a human-readable failure report.
     static func selfCheck() -> String {
         // 1. Load the PKCS#8 private key (DER) and X.509 cert (DER) that the
-        //    CI step exported with openssl. SecKeyImport is in-memory (no
-        //    keychain), avoiding the SecPKCS12Import keychain crash on CI.
+        //    CI step exported with openssl. Use SecKeyCreateWithData (iOS 15+)
+        //    with PKCS#1 extracted from PKCS#8 — no keychain needed.
         guard let keyData = try? Data(contentsOf: URL(fileURLWithPath: "/tmp/sid9-key.p8")),
               keyData.count > 100 else {
             return "selfCheck: cannot read /tmp/sid9-key.p8 (openssl pkcs8 may have failed)"
         }
-        var impErr: Unmanaged<CFError>?
-        var privKey: SecKey?
-        let keyOpts: [CFString: Any] = [kSecAttrKeyType: kSecAttrKeyTypeRSA]
-        let impStatus = SecKeyImport(keyData as CFData, keyOpts as CFDictionary, &impErr, &privKey)
-        guard impStatus == errSecSuccess, let key = privKey else {
-            return "selfCheck: SecKeyImport status \(impStatus) err=\(String(describing: impErr?.takeRetainedValue()))"
+        // SecKeyImport is macOS-only; on iOS use SecKeyCreateWithData (iOS 15+).
+        // It expects PKCS#1 for RSA private keys, so extract from PKCS#8.
+        guard let pkcs1 = Self.extractPKCS1fromPKCS8(keyData) else {
+            return "selfCheck: failed to parse PKCS#8 key data"
+        }
+        var keyErr: Unmanaged<CFError>?
+        let keyAttrs: [CFString: Any] = [
+            kSecAttrKeyType: kSecAttrKeyTypeRSA,
+            kSecAttrKeyClass: kSecAttrKeyClassPrivate
+        ]
+        guard let key = SecKeyCreateWithData(pkcs1 as CFData, keyAttrs as CFDictionary, &keyErr) else {
+            return "selfCheck: SecKeyCreateWithData failed: \(String(describing: keyErr?.takeRetainedValue()))"
         }
         guard let derData = try? Data(contentsOf: URL(fileURLWithPath: "/tmp/sid9-cert.der")),
               let certificate = SecCertificateCreateWithData(nil, derData as CFData) else {
