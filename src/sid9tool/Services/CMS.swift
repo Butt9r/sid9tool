@@ -268,14 +268,24 @@ enum CMS {
         var identity: SecIdentity?
         var cert: SecCertificate?
         for item in items as! [AnyObject] {
-            if identity == nil && CFGetTypeID(item) == SecIdentityGetTypeID() {
+            if identity == nil, item is SecIdentity {
                 identity = item as! SecIdentity
-            } else if cert == nil && CFGetTypeID(item) == SecCertificateGetTypeID() {
+            } else if cert == nil, item is SecCertificate {
                 cert = item as! SecCertificate
             }
         }
-        guard let id = identity, let certificate = cert else {
-            return "selfCheck: PKCS#12 has no identity/cert (imported \(itemCount) items)"
+        guard let id = identity else {
+            return "selfCheck: PKCS#12 has no identity (imported \(itemCount) items)"
+        }
+        // If no separate cert was imported, extract it from the identity.
+        let certificate: SecCertificate
+        if let c = cert {
+            certificate = c
+        } else {
+            guard let extracted = SecIdentityCopyCertificate(id) else {
+                return "selfCheck: cannot extract certificate from identity"
+            }
+            certificate = extracted
         }
         let certData = SecCertificateCopyData(certificate) as Data
         let dump = certData.prefix(80).map { String(format: "%02x", $0) }.joined(separator: " ")
