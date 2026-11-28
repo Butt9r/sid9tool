@@ -50,8 +50,8 @@ jobs:
           openssl pkcs12 -export -legacy -out /tmp/sid9.p12 -inkey /tmp/sid9-key.pem -in /tmp/sid9-cert.pem -password pass:selfcheck
           # DER copy of the cert for the selfCheck (SecIdentityCopyCertificate is absent from the iOS SDK).
           openssl x509 -outform der -in /tmp/sid9-cert.pem -out /tmp/sid9-cert.der
-# PKCS#8 DER private key for selfCheck (SecKeyImport, in-memory, no keychain).
-openssl pkcs8 -topk8 -nocrypt -in /tmp/sid9-key.pem -outform DER -out /tmp/sid9-key.p8
+          # PKCS#8 DER private key for selfCheck (SecKeyImport, in-memory, no keychain).
+          openssl pkcs8 -topk8 -nocrypt -in /tmp/sid9-key.pem -outform DER -out /tmp/sid9-key.p8
           swiftc -o selfcheck main.swift src/sid9tool/Services/MachO.swift src/sid9tool/Services/CodeSigner.swift src/sid9tool/Services/CMS.swift
           ./selfcheck
 
