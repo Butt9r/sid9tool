@@ -165,7 +165,7 @@ enum CMS {
             let n = len & 0x7f
             guard n > 0, p + n <= b.count else { return nil }
             len = 0
-            for i in 0..<n { len = (len << 8) | Int(b[p + i]) }
+            for i in 0..<n { len = (len << 8) | (Int(b[p + i]) & 0xFF) }
             p += n
         }
         guard p + len <= b.count else { return nil }
@@ -212,17 +212,10 @@ enum CMS {
     static func makeSelfSignedCert(privateKey: SecKey, cn: String) -> SelfSignedCert? {
         // SubjectPublicKeyInfo (DER): SecKeyCopyExternalRepresentation returns
         // the DER-encoded SPKI for an RSA public key (macOS 10.15+ / iOS 13+).
-        guard let pubKey = SecKeyCopyPublicKey(privateKey) else {
-            FileHandle.standardError.write("makeSelfSignedCert: SecKeyCopyPublicKey failed\n".data(using: .utf8)!)
-            return nil
-        }
+        guard let pubKey = SecKeyCopyPublicKey(privateKey) else { return nil }
         var repErr: Unmanaged<CFError>?
-        guard let spki = SecKeyCopyExternalRepresentation(pubKey, &repErr) else {
-            FileHandle.standardError.write("makeSelfSignedCert: SecKeyCopyExternalRepresentation failed err=\(String(describing: repErr))\n".data(using: .utf8)!)
-            return nil
-        }
+        guard let spki = SecKeyCopyExternalRepresentation(pubKey, &repErr) else { return nil }
         let spkiBytes = [UInt8](spki as Data)
-        FileHandle.standardError.write("makeSelfSignedCert: SPKI size=\(spkiBytes.count) firstByte=0x\(String(format: "%02X", spkiBytes.first ?? 0))\n".data(using: .utf8)!)
         // X509Name { CN = cn }
         let c = [UInt8](cn.utf8)
         let atv = derOID([0x55, 0x04, 0x03]) + derTLV(0x0C, c) // OID(2.5.4.3) + UTF8String value
@@ -273,6 +266,11 @@ enum CMS {
             return "selfCheck: makeSelfSignedCert returned nil (SPKI/sign step)"
         }
         let certData = made.cert
+        // Diagnostic: dump first 80 bytes + TBS boundary
+        let dump = certData.prefix(80).map { String(format: "%02x", $0) }.joined(separator: " ")
+        let tbsLen = made.tbs.count
+        let tbsDump = made.tbs.prefix(60).map { String(format: "%02x", $0) }.joined(separator: " ")
+        FileHandle.standardError.write("cert[0:80]=\(dump)\nTBS len=\(tbsLen) tbs[0:60]=\(tbsDump)\n".data(using: .utf8)!)
         guard let certificate = SecCertificateCreateWithData(nil, certData as CFData) else {
             return "selfCheck: SecCertificateCreateWithData rejected \(certData.count)-byte DER"
         }
