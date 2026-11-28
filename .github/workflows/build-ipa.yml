@@ -43,8 +43,10 @@ jobs:
             CODE_SIGN_IDENTITY='' \
             -derivedDataPath "$PWD/DerivedData"
 
-      - name: Run self-check (P1-3 / P1-4)
+      - name: Run self-check (P1-3 / P1-4 / P1-5)
         run: |
+          openssl req -x509 -newkey rsa:2048 -keyout /tmp/sid9-key.pem -out /tmp/sid9-cert.pem -days 365 -nodes -subj "/CN=sid9tool-selfcheck" 2>/dev/null
+          openssl pkcs12 -export -out /tmp/sid9.p12 -inkey /tmp/sid9-key.pem -in /tmp/sid9-cert.pem -password pass:selfcheck
           swiftc -o selfcheck main.swift src/sid9tool/Services/MachO.swift src/sid9tool/Services/CodeSigner.swift src/sid9tool/Services/CMS.swift
           ./selfcheck
 
