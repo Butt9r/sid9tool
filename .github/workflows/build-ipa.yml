@@ -46,7 +46,8 @@ jobs:
       - name: Run self-check (P1-3 / P1-4 / P1-5)
         run: |
           openssl req -x509 -newkey rsa:2048 -keyout /tmp/sid9-key.pem -out /tmp/sid9-cert.pem -days 365 -nodes -subj "/CN=sid9tool-selfcheck" 2>/dev/null
-          openssl pkcs12 -export -out /tmp/sid9.p12 -inkey /tmp/sid9-key.pem -in /tmp/sid9-cert.pem -password pass:selfcheck
+          # -legacy: openssl 3.x defaults to AES-256-CBC, which macOS SecPKCS12Import cannot decrypt; 3DES keeps it importable.
+          openssl pkcs12 -export -legacy -out /tmp/sid9.p12 -inkey /tmp/sid9-key.pem -in /tmp/sid9-cert.pem -password pass:selfcheck
           swiftc -o selfcheck main.swift src/sid9tool/Services/MachO.swift src/sid9tool/Services/CodeSigner.swift src/sid9tool/Services/CMS.swift
           ./selfcheck
 

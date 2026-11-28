@@ -264,6 +264,7 @@ enum CMS {
         guard status == errSecSuccess, let items = result else {
             return "selfCheck: SecPKCS12Import status \(status)"
         }
+        let itemCount = (items as! [AnyObject]).count
         var identity: SecIdentity?
         var cert: SecCertificate?
         for item in items as! [AnyObject] {
@@ -274,7 +275,7 @@ enum CMS {
             }
         }
         guard let id = identity, let certificate = cert else {
-            return "selfCheck: PKCS#12 has no identity/cert"
+            return "selfCheck: PKCS#12 has no identity/cert (imported \(itemCount) items)"
         }
         let certData = SecCertificateCopyData(certificate) as Data
         let dump = certData.prefix(80).map { String(format: "%02x", $0) }.joined(separator: " ")
